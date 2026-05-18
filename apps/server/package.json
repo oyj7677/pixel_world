@@ -1,0 +1,30 @@
+{
+  "name": "@pixel-world/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json --noEmit",
+    "dev": "tsx watch src/index.ts",
+    "load:socket": "tsx scripts/socketLoad.ts",
+    "migrate": "tsx src/db/migrate.ts",
+    "start": "tsx src/index.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@fastify/cookie": "latest",
+    "@fastify/cors": "latest",
+    "@pixel-world/shared": "0.0.0",
+    "fastify": "latest",
+    "ioredis": "latest",
+    "pg": "latest",
+    "socket.io": "latest"
+  },
+  "devDependencies": {
+    "@types/pg": "latest",
+    "socket.io-client": "^4.8.3",
+    "tsx": "latest",
+    "vitest": "latest"
+  }
+}

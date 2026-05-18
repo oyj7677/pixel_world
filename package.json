@@ -1,0 +1,25 @@
+{
+  "name": "pixel-world",
+  "private": true,
+  "workspaces": [
+    "packages/shared",
+    "apps/server",
+    "apps/web",
+    "apps/e2e"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "dev:server": "npm run dev --workspace @pixel-world/server",
+    "dev:web": "npm run dev --workspace @pixel-world/web",
+    "load:socket": "npm run load:socket --workspace @pixel-world/server --",
+    "migrate": "npm run migrate --workspace @pixel-world/server",
+    "test": "npm run test --workspace @pixel-world/shared --workspace @pixel-world/server --workspace @pixel-world/web",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "e2e": "npm run test --workspace @pixel-world/e2e",
+    "verify": "npm run typecheck && npm run test && npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "typescript": "latest"
+  }
+}
