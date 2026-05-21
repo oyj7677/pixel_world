@@ -1,0 +1,663 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pixel World 개발기 발표</title>
+  <style>
+    :root {
+      --bg: #f4f7fb;
+      --stage: #ffffff;
+      --surface: #ffffff;
+      --surface-soft: #f6f8fb;
+      --surface-blue: #eef6ff;
+      --surface-pink: #fff3f8;
+      --surface-green: #effaf4;
+      --surface-yellow: #fff8e6;
+      --line: #e5e8ef;
+      --line-strong: #d6dbe6;
+      --text: #191f28;
+      --muted: #6b7684;
+      --subtle: #8b95a1;
+      --accent: #3182f6;
+      --accent-strong: #0064ff;
+      --accent-soft: #e8f3ff;
+      --danger: #f04452;
+      --ok: #00a661;
+      --warn: #f59f00;
+      --shadow: 0 28px 80px rgba(25, 31, 40, 0.16);
+      --soft-shadow: 0 18px 44px rgba(49, 130, 246, 0.10);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 16% 2%, rgba(49, 130, 246, 0.15), transparent 26rem),
+        radial-gradient(circle at 90% 88%, rgba(0, 100, 255, 0.10), transparent 30rem),
+        linear-gradient(180deg, #fbfcfe 0%, var(--bg) 100%);
+      color: var(--text);
+      overflow: hidden;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: geometricPrecision;
+    }
+
+    .deck-shell {
+      display: grid;
+      grid-template-rows: 1fr auto;
+      gap: 16px;
+      height: 100vh;
+      padding: 22px;
+    }
+
+    .stage-wrap {
+      display: grid;
+      place-items: center;
+      min-height: 0;
+    }
+
+    .stage {
+      position: relative;
+      width: min(96vw, calc(96vh * 16 / 9));
+      aspect-ratio: 16 / 9;
+      border: 1px solid rgba(214, 219, 230, 0.9);
+      border-radius: 34px;
+      overflow: hidden;
+      background: var(--stage);
+      box-shadow: var(--shadow);
+    }
+
+    .stage::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(circle at 86% 10%, rgba(49, 130, 246, 0.16), transparent 18rem),
+        linear-gradient(115deg, transparent 0 62%, rgba(232, 243, 255, 0.78) 62% 100%);
+      z-index: 0;
+    }
+
+    .slide {
+      position: absolute;
+      inset: 0;
+      z-index: 1;
+      display: none;
+      grid-template-rows: auto 1fr auto;
+      gap: 30px;
+      padding: 68px 82px 54px;
+    }
+
+    .slide.active { display: grid; }
+    .slide::after {
+      content: attr(data-number);
+      position: absolute;
+      right: 42px;
+      bottom: 30px;
+      color: #b0b8c1;
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+
+    .eyebrow {
+      justify-self: start;
+      display: inline-flex;
+      align-items: center;
+      min-height: 38px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent-strong);
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: -0.01em;
+      padding: 0 16px;
+    }
+
+    h1, h2, h3, p { margin: 0; }
+    h1 {
+      max-width: 1120px;
+      color: var(--text);
+      font-size: clamp(58px, 6.6vw, 116px);
+      font-weight: 900;
+      line-height: 0.98;
+      letter-spacing: -0.075em;
+      text-wrap: balance;
+    }
+
+    h2 {
+      max-width: 1220px;
+      color: var(--text);
+      font-size: clamp(48px, 5vw, 82px);
+      font-weight: 900;
+      line-height: 1.05;
+      letter-spacing: -0.07em;
+      text-wrap: balance;
+    }
+
+    h3 {
+      color: var(--accent-strong);
+      font-size: 28px;
+      font-weight: 850;
+      letter-spacing: -0.04em;
+    }
+
+    .lead {
+      max-width: 980px;
+      color: var(--muted);
+      font-size: 29px;
+      font-weight: 650;
+      line-height: 1.45;
+      letter-spacing: -0.055em;
+      text-wrap: pretty;
+    }
+
+    .content { display: grid; align-content: center; gap: 32px; }
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; align-items: stretch; }
+    .three-col { display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px; }
+    .grid-2x2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 24px; }
+
+    .card {
+      border: 1px solid var(--line);
+      border-radius: 30px;
+      background: rgba(255, 255, 255, 0.88);
+      box-shadow: 0 14px 36px rgba(25, 31, 40, 0.07);
+      padding: 30px;
+    }
+
+    .card.pink { border-color: #ffe1ec; background: var(--surface-pink); }
+    .card.ok { border-color: #d8f3e4; background: var(--surface-green); }
+    .card.warn { border-color: #ffedbf; background: var(--surface-yellow); }
+
+    .card-title {
+      display: block;
+      margin-bottom: 16px;
+      color: var(--text);
+      font-size: 24px;
+      font-weight: 900;
+      letter-spacing: -0.045em;
+    }
+
+    .big-number {
+      display: block;
+      margin-bottom: 12px;
+      color: var(--accent-strong);
+      font-size: 64px;
+      font-weight: 900;
+      line-height: 1;
+      letter-spacing: -0.07em;
+    }
+
+    ul, ol { margin: 0; padding-left: 1.1em; }
+    li {
+      margin: 11px 0;
+      color: var(--muted);
+      font-size: 25px;
+      font-weight: 650;
+      line-height: 1.34;
+      letter-spacing: -0.052em;
+    }
+    li::marker { color: var(--accent); }
+    li strong, p strong { color: var(--text); }
+
+    .tag-row { display: flex; flex-wrap: wrap; gap: 10px; }
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      min-height: 42px;
+      border: 1px solid #dbeafe;
+      border-radius: 999px;
+      background: #f2f7ff;
+      color: var(--accent-strong);
+      font-size: 20px;
+      font-weight: 850;
+      letter-spacing: -0.035em;
+      padding: 0 16px;
+    }
+
+    .pixel-board {
+      display: grid;
+      grid-template-columns: repeat(16, 1fr);
+      gap: 5px;
+      width: 430px;
+      max-width: 100%;
+      aspect-ratio: 1;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 32px;
+      background: rgba(255, 255, 255, 0.9);
+      box-shadow: var(--soft-shadow);
+    }
+
+    .px { border-radius: 6px; background: #edf1f7; }
+    .c1 { background: #3182f6; } .c2 { background: #ff7eb6; } .c3 { background: #20c997; }
+    .c4 { background: #ffd43b; } .c5 { background: #ff6b6b; } .c6 { background: #845ef7; }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 14px;
+      align-items: center;
+    }
+
+    .step {
+      min-height: 142px;
+      border: 1px solid var(--line);
+      border-radius: 28px;
+      background: rgba(255, 255, 255, 0.92);
+      box-shadow: 0 12px 30px rgba(25, 31, 40, 0.06);
+      padding: 22px;
+      text-align: center;
+    }
+
+    .step b {
+      display: inline-grid;
+      place-items: center;
+      width: 48px;
+      height: 48px;
+      margin-bottom: 14px;
+      border-radius: 16px;
+      background: var(--accent-strong);
+      color: #fff;
+      font-size: 25px;
+      font-weight: 900;
+    }
+    .step span { color: var(--text); font-size: 21px; font-weight: 800; line-height: 1.25; letter-spacing: -0.05em; }
+
+    .arrow { color: #b0c7ff; font-size: 36px; text-align: center; }
+    .architecture { display: grid; grid-template-columns: 1.1fr 0.9fr 1fr; gap: 20px; align-items: center; }
+    .lane { display: grid; gap: 14px; }
+    .box {
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      background: rgba(255, 255, 255, 0.92);
+      box-shadow: 0 12px 30px rgba(25, 31, 40, 0.06);
+      padding: 20px;
+      color: var(--text);
+      font-size: 23px;
+      font-weight: 850;
+      line-height: 1.28;
+      text-align: center;
+      letter-spacing: -0.045em;
+    }
+    .box small { display: block; margin-top: 7px; color: var(--muted); font-size: 16px; font-weight: 650; }
+
+    .quote {
+      max-width: 1220px;
+      border: 0;
+      border-radius: 34px;
+      background: linear-gradient(135deg, #f2f7ff, #ffffff 72%);
+      box-shadow: var(--soft-shadow);
+      padding: 38px 42px;
+      color: var(--text);
+      font-size: 44px;
+      font-weight: 900;
+      line-height: 1.24;
+      letter-spacing: -0.065em;
+      text-wrap: balance;
+    }
+
+    .timeline { display: grid; gap: 14px; }
+    .timeline-item {
+      display: grid;
+      grid-template-columns: 180px 1fr;
+      gap: 22px;
+      align-items: start;
+      border-radius: 24px;
+      background: rgba(255, 255, 255, 0.82);
+      border: 1px solid var(--line);
+      padding: 18px 22px;
+    }
+    .timeline-item b { color: var(--accent-strong); font-size: 23px; font-weight: 900; letter-spacing: -0.04em; }
+    .timeline-item span { color: var(--muted); font-size: 23px; font-weight: 650; line-height: 1.35; letter-spacing: -0.045em; }
+
+    .footer-note { color: var(--subtle); font-size: 19px; font-weight: 700; letter-spacing: -0.035em; }
+    .speaker-note {
+      display: none;
+      max-width: 1120px;
+      border-radius: 20px;
+      background: rgba(25, 31, 40, 0.05);
+      color: var(--muted);
+      font-size: 17px;
+      font-weight: 650;
+      line-height: 1.45;
+      padding: 14px 16px;
+    }
+    .show-notes .speaker-note { display: block; }
+
+    .controls {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .control-group { display: flex; align-items: center; gap: 8px; }
+    button {
+      min-height: 42px;
+      border: 1px solid var(--line-strong);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.86);
+      color: var(--text);
+      font: inherit;
+      font-weight: 850;
+      padding: 0 16px;
+      cursor: pointer;
+      box-shadow: 0 8px 20px rgba(25, 31, 40, 0.05);
+    }
+    button:hover, button:focus-visible { outline: 3px solid rgba(49, 130, 246, 0.26); outline-offset: 2px; border-color: var(--accent); }
+    .progress { display: flex; gap: 5px; align-items: center; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: #d1d6de; }
+    .dot.active { width: 30px; border-radius: 999px; background: var(--accent-strong); }
+
+    @media (max-width: 900px) {
+      body { overflow: auto; }
+      .deck-shell { height: auto; min-height: 100vh; padding: 10px; }
+      .stage { width: 100%; }
+      .slide { padding: 30px 24px 38px; gap: 16px; }
+      h1 { font-size: 42px; }
+      h2 { font-size: 34px; }
+      .lead, li { font-size: 17px; }
+      .two-col, .three-col, .grid-2x2, .architecture { grid-template-columns: 1fr; }
+      .flow { grid-template-columns: 1fr; }
+      .arrow { display: none; }
+      .stage { aspect-ratio: auto; min-height: 760px; }
+    }
+
+    @media print {
+      body { overflow: visible; background: #fff; }
+      .deck-shell { display: block; height: auto; padding: 0; }
+      .stage { width: 100%; aspect-ratio: auto; border: 0; box-shadow: none; overflow: visible; }
+      .stage::before { display: none; }
+      .slide { position: relative; display: grid !important; page-break-after: always; min-height: 100vh; }
+      .controls { display: none; }
+    }
+
+  </style>
+</head>
+<body>
+  <main class="deck-shell" id="deck">
+    <div class="stage-wrap">
+      <section class="stage" aria-live="polite">
+        <article class="slide active" data-number="01 / 14">
+          <header class="eyebrow">Pixel World · Development Story</header>
+          <div class="content">
+            <h1>공개 캔버스에서<br />친구들의 하루 기록으로</h1>
+            <p class="lead">r/place류 실시간 픽셀 캔버스에서 출발해, 초대 링크·닉네임·퀵 픽셀 중심의 친구 기반 협업 캔버스로 전환한 개발기입니다.</p>
+            <div class="tag-row"><span class="tag">Next.js</span><span class="tag">Fastify</span><span class="tag">Socket.IO</span><span class="tag">PostgreSQL</span><span class="tag">Redis</span><span class="tag">AI-assisted development</span></div>
+          </div>
+          <footer class="footer-note">2026-05-19 · Pixel World MVP</footer>
+          <p class="speaker-note">발표 시작에서는 “픽셀을 그리는 앱”이 아니라 “친구의 오늘에 한 칸을 남기는 앱”으로 관점을 바꾼 이야기라고 소개한다.</p>
+        </article>
+
+        <article class="slide" data-number="02 / 14">
+          <header class="eyebrow">Core Message</header>
+          <div class="content">
+            <h2>이 프로젝트의 핵심은<br />픽셀 기능이 아니라 참여 이유를 다시 설계한 것입니다</h2>
+            <div class="three-col">
+              <div class="card"><span class="card-title">왜 바꿨나</span><p class="lead">공개 캔버스는 차별화와 운영 부담이 컸고, 사용자가 처음 행동할 이유가 약했습니다.</p></div>
+              <div class="card pink"><span class="card-title">무엇을 만들었나</span><p class="lead">친구 방, 초대 링크, 닉네임 입장, Quick Pixel, 실시간 방 캔버스로 Phase 1 MVP를 만들었습니다.</p></div>
+              <div class="card ok"><span class="card-title">다음 판단은 무엇인가</span><p class="lead">Daily Pixel Log가 반복 사용과 공유를 만드는지 30일 실험으로 검증해야 합니다.</p></div>
+            </div>
+          </div>
+          <p class="speaker-note">관점 이름을 노출하지 않고, 분석 결과만 메시지 구조로 반영한다. 이 장은 발표 전체의 지도 역할을 한다.</p>
+        </article>
+
+        <article class="slide" data-number="03 / 14">
+          <header class="eyebrow">Starting Point</header>
+          <div class="content two-col">
+            <div>
+              <h2>처음에는<br />공개 픽셀 월드였다</h2>
+              <p class="lead">누구나 같은 캔버스에 접속해 픽셀을 찍고, 다른 사람의 변경을 실시간으로 보는 구조에서 시작했습니다.</p>
+            </div>
+            <div class="pixel-board" aria-label="픽셀 캔버스 모형">
+              <span class="px c1"></span><span class="px"></span><span class="px c2"></span><span class="px"></span><span class="px c3"></span><span class="px"></span><span class="px c4"></span><span class="px"></span><span class="px"></span><span class="px c5"></span><span class="px"></span><span class="px c6"></span><span class="px"></span><span class="px c1"></span><span class="px"></span><span class="px"></span>
+              <span class="px"></span><span class="px c2"></span><span class="px c2"></span><span class="px"></span><span class="px"></span><span class="px c3"></span><span class="px"></span><span class="px"></span><span class="px c4"></span><span class="px"></span><span class="px c5"></span><span class="px"></span><span class="px c6"></span><span class="px"></span><span class="px"></span><span class="px c1"></span>
+              <span class="px c3"></span><span class="px"></span><span class="px"></span><span class="px c2"></span><span class="px"></span><span class="px"></span><span class="px c4"></span><span class="px c4"></span><span class="px"></span><span class="px"></span><span class="px c5"></span><span class="px"></span><span class="px"></span><span class="px c6"></span><span class="px"></span><span class="px"></span>
+              <span class="px"></span><span class="px c3"></span><span class="px"></span><span class="px"></span><span class="px c2"></span><span class="px"></span><span class="px"></span><span class="px c4"></span><span class="px"></span><span class="px c5"></span><span class="px"></span><span class="px"></span><span class="px c6"></span><span class="px"></span><span class="px c1"></span><span class="px"></span>
+              <span class="px"></span><span class="px"></span><span class="px c3"></span><span class="px"></span><span class="px"></span><span class="px c2"></span><span class="px"></span><span class="px"></span><span class="px c4"></span><span class="px"></span><span class="px c5"></span><span class="px c5"></span><span class="px"></span><span class="px"></span><span class="px c6"></span><span class="px"></span>
+              <span class="px c1"></span><span class="px"></span><span class="px"></span><span class="px c3"></span><span class="px"></span><span class="px"></span><span class="px c2"></span><span class="px"></span><span class="px"></span><span class="px c4"></span><span class="px"></span><span class="px c5"></span><span class="px"></span><span class="px c6"></span><span class="px"></span><span class="px"></span>
+              <span class="px"></span><span class="px c1"></span><span class="px"></span><span class="px"></span><span class="px c3"></span><span class="px"></span><span class="px c2"></span><span class="px c2"></span><span class="px"></span><span class="px"></span><span class="px c4"></span><span class="px"></span><span class="px c5"></span><span class="px"></span><span class="px c6"></span><span class="px"></span>
+              <span class="px"></span><span class="px"></span><span class="px c1"></span><span class="px"></span><span class="px"></span><span class="px c3"></span><span class="px"></span><span class="px c2"></span><span class="px"></span><span class="px"></span><span class="px c4"></span><span class="px c4"></span><span class="px"></span><span class="px c5"></span><span class="px"></span><span class="px c6"></span>
+              <span class="px c6"></span><span class="px"></span><span class="px"></span><span class="px c1"></span><span class="px"></span><span class="px"></span><span class="px c3"></span><span class="px"></span><span class="px c2"></span><span class="px"></span><span class="px"></span><span class="px c4"></span><span class="px"></span><span class="px"></span><span class="px c5"></span><span class="px"></span>
+              <span class="px"></span><span class="px c6"></span><span class="px"></span><span class="px"></span><span class="px c1"></span><span class="px"></span><span class="px"></span><span class="px c3"></span><span class="px"></span><span class="px c2"></span><span class="px"></span><span class="px"></span><span class="px c4"></span><span class="px"></span><span class="px"></span><span class="px c5"></span>
+              <span class="px"></span><span class="px"></span><span class="px c6"></span><span class="px"></span><span class="px"></span><span class="px c1"></span><span class="px"></span><span class="px"></span><span class="px c3"></span><span class="px"></span><span class="px c2"></span><span class="px"></span><span class="px"></span><span class="px c4"></span><span class="px"></span><span class="px c5"></span>
+              <span class="px c5"></span><span class="px"></span><span class="px"></span><span class="px c6"></span><span class="px"></span><span class="px"></span><span class="px c1"></span><span class="px"></span><span class="px"></span><span class="px c3"></span><span class="px"></span><span class="px c2"></span><span class="px"></span><span class="px"></span><span class="px c4"></span><span class="px"></span>
+              <span class="px"></span><span class="px c5"></span><span class="px"></span><span class="px"></span><span class="px c6"></span><span class="px"></span><span class="px"></span><span class="px c1"></span><span class="px"></span><span class="px"></span><span class="px c3"></span><span class="px"></span><span class="px c2"></span><span class="px"></span><span class="px"></span><span class="px c4"></span>
+              <span class="px c4"></span><span class="px"></span><span class="px c5"></span><span class="px"></span><span class="px"></span><span class="px c6"></span><span class="px"></span><span class="px"></span><span class="px c1"></span><span class="px"></span><span class="px"></span><span class="px c3"></span><span class="px"></span><span class="px c2"></span><span class="px"></span><span class="px"></span>
+              <span class="px"></span><span class="px c4"></span><span class="px"></span><span class="px c5"></span><span class="px"></span><span class="px"></span><span class="px c6"></span><span class="px"></span><span class="px c1"></span><span class="px c1"></span><span class="px"></span><span class="px"></span><span class="px c3"></span><span class="px"></span><span class="px c2"></span><span class="px"></span>
+              <span class="px"></span><span class="px"></span><span class="px c4"></span><span class="px"></span><span class="px c5"></span><span class="px"></span><span class="px"></span><span class="px c6"></span><span class="px"></span><span class="px c1"></span><span class="px"></span><span class="px"></span><span class="px c3"></span><span class="px c3"></span><span class="px"></span><span class="px c2"></span>
+            </div>
+          </div>
+          <p class="speaker-note">초기 방향은 실시간성, 캔버스, 관리자 도구 같은 기술적 기반을 만드는 데 좋았지만 제품 차별화는 약했다.</p>
+        </article>
+
+        <article class="slide" data-number="04 / 14">
+          <header class="eyebrow">Why Pivot?</header>
+          <div class="content">
+            <h2>방향 전환의 이유는<br />세 가지 리스크였습니다</h2>
+            <div class="three-col">
+              <div class="card warn"><span class="card-title">차별화 리스크</span><ul><li>r/place류 공개 캔버스는 이미 강한 레퍼런스가 있음</li><li>대규모 트래픽 없이 재미를 만들기 어려움</li><li>“또 하나의 클론”으로 보일 가능성</li></ul></div>
+              <div class="card"><span class="card-title">활성화 리스크</span><ul><li>어디에 찍을지 고민하는 순간 첫 행동이 늦어짐</li><li>그림 실력 부담이 생김</li><li>친구 초대 없이는 재방문 이유가 약함</li></ul></div>
+              <div class="card pink"><span class="card-title">운영 리스크</span><ul><li>전역 공개 공간은 도배와 부적절한 콘텐츠에 취약</li><li>초기 팀 규모 대비 moderation 비용이 큼</li><li>방 단위 scope가 더 안전함</li></ul></div>
+            </div>
+          </div>
+          <p class="speaker-note">사업가/대표 관점에서는 “왜 기존 방향을 버렸나”가 가장 중요하다. 세 리스크로 설명하면 의사결정이 설득된다.</p>
+        </article>
+
+        <article class="slide" data-number="05 / 14">
+          <header class="eyebrow">Product Shift</header>
+          <div class="content">
+            <div class="quote">“친구의 오늘에 내 색 한 칸을 남긴다.”</div>
+            <div class="two-col">
+              <div class="card warn"><span class="card-title">Before</span><ul><li>전 세계 누구나 들어오는 공개 캔버스</li><li>픽셀 아트 실력과 경쟁 중심</li><li>재미가 규모에 크게 의존</li></ul></div>
+              <div class="card ok"><span class="card-title">After</span><ul><li>초대 링크로 들어오는 친구 방</li><li>닉네임 입력 후 바로 Quick Pixel</li><li>하루 기록과 리플레이로 공유 가치 형성</li></ul></div>
+            </div>
+            <div class="flow">
+              <div class="step"><b>1</b><span>방 만들기</span></div><div class="arrow">→</div>
+              <div class="step"><b>2</b><span>친구 초대</span></div><div class="arrow">→</div>
+              <div class="step"><b>3</b><span>첫 픽셀</span></div>
+            </div>
+          </div>
+          <p class="speaker-note">청중에게는 Before/After가 가장 빠르다. 제품 방향이 어떻게 바뀌었는지 한 장에서 이해되게 한다.</p>
+        </article>
+
+        <article class="slide" data-number="06 / 14">
+          <header class="eyebrow">Current MVP</header>
+          <div class="content">
+            <h2>현재 MVP는<br />Phase 1 검증용으로 정리됐습니다</h2>
+            <div class="grid-2x2">
+              <div class="card"><span class="card-title">30초 안에 방 만들기</span><ul><li>방장 닉네임 + 방 이름만 입력</li><li>초대 링크 생성과 복사</li><li>방 화면에서도 새 초대 주소 발급</li></ul></div>
+              <div class="card pink"><span class="card-title">10초 안에 첫 참여</span><ul><li>로그인 없이 닉네임 입장</li><li>Quick Pixel로 첫 행동 유도</li><li>같은 브라우저 닉네임 기억</li></ul></div>
+              <div class="card ok"><span class="card-title">방 단위 실시간성</span><ul><li>32×32 방별 캔버스</li><li>Socket.IO 픽셀 동기화</li><li>접속 상태와 최근 활동 표시</li></ul></div>
+              <div class="card warn"><span class="card-title">운영 가능성</span><ul><li>/admin 관리자 화면</li><li>최근 이벤트 조회</li><li>픽셀 복구와 영역 초기화</li></ul></div>
+            </div>
+          </div>
+          <p class="speaker-note">상사 관점에서는 “그래서 지금 어디까지 됐나”가 중요하다. 기능 목록보다 성공 기준에 붙여 설명한다.</p>
+        </article>
+
+        <article class="slide" data-number="07 / 14">
+          <header class="eyebrow">Architecture</header>
+          <div class="content architecture">
+            <div class="lane">
+              <div class="box">apps/web<small>Next.js · React · 사용자/관리자 화면</small></div>
+              <div class="box">apps/e2e<small>Playwright · 실제 사용자 흐름 검증</small></div>
+            </div>
+            <div class="lane">
+              <div class="box">packages/shared<small>공통 타입 · 색상 · 정책 · Socket 이벤트</small></div>
+              <div class="arrow">↕</div>
+              <div class="box">npm workspaces<small>한 저장소에서 앱과 계약을 함께 관리</small></div>
+            </div>
+            <div class="lane">
+              <div class="box">apps/server<small>Fastify · Socket.IO · API 서버</small></div>
+              <div class="box">PostgreSQL<small>방 · 캔버스 · 초대 · 이벤트 로그</small></div>
+              <div class="box">Redis / Key Value<small>쿨다운 · 픽셀 허용량 상태</small></div>
+            </div>
+          </div>
+          <p class="speaker-note">shared 패키지가 핵심이다. 서버와 웹이 같은 DTO와 정책을 보면서 drift를 줄인다.</p>
+        </article>
+
+        <article class="slide" data-number="08 / 14">
+          <header class="eyebrow">Tech Stack</header>
+          <div class="content">
+            <h2>기술 선택은<br />“빠른 검증 + 운영 가능성” 기준이었습니다</h2>
+            <div class="three-col">
+              <div class="card"><span class="card-title">Web</span><ul><li>Next.js / React: 빠른 화면 구성</li><li>TypeScript: DTO와 UI 계약 고정</li><li>Testing Library: 사용자 행동 중심 테스트</li></ul></div>
+              <div class="card"><span class="card-title">Server</span><ul><li>Fastify: 가벼운 API 서버</li><li>Socket.IO: 방 단위 실시간 이벤트</li><li>PostgreSQL: 방/캔버스/이벤트 영구 저장</li></ul></div>
+              <div class="card"><span class="card-title">Validation</span><ul><li>Vitest: shared/server/web 단위 검증</li><li>Playwright: 초대·입장·픽셀 E2E</li><li>Render/Vercel: 실제 배포 경로 확보</li></ul></div>
+            </div>
+            <div class="tag-row"><span class="tag">116 tracked files</span><span class="tag">29 test files</span><span class="tag">7 semantic commits</span><span class="tag">secret audit 완료</span></div>
+          </div>
+          <p class="speaker-note">기술 스택 나열이 아니라 왜 그 기술을 썼는지로 바꿨다. 비즈니스 청중에게도 납득 가능하다.</p>
+        </article>
+
+        <article class="slide" data-number="09 / 14">
+          <header class="eyebrow">Realtime Data Flow</header>
+          <div class="content">
+            <h2>한 픽셀이 찍히는 과정</h2>
+            <div class="timeline">
+              <div class="timeline-item"><b>Client</b><span>사용자가 캔버스 또는 Quick Pixel에서 색과 위치를 선택합니다.</span></div>
+              <div class="timeline-item"><b>API</b><span>Fastify route가 멤버십, 초대 토큰, 색상, 쿨다운/허용량을 검증합니다.</span></div>
+              <div class="timeline-item"><b>PostgreSQL</b><span>픽셀 상태와 이벤트 로그를 영구 저장합니다.</span></div>
+              <div class="timeline-item"><b>Socket.IO</b><span>같은 방의 접속자에게 pixelUpdated 이벤트를 브로드캐스트합니다.</span></div>
+              <div class="timeline-item"><b>UI</b><span>CanvasBoard, RecentEvents, StatusBar가 실시간으로 갱신됩니다.</span></div>
+            </div>
+          </div>
+          <p class="speaker-note">중요한 점은 방 단위 scope다. 전역 캔버스에서 방/멤버/일자 단위로 데이터 경계가 생겼다.</p>
+        </article>
+
+        <article class="slide" data-number="10 / 14">
+          <header class="eyebrow">Security & Operations</header>
+          <div class="content grid-2x2">
+            <div class="card ok"><span class="card-title">비밀값은 환경 변수</span><ul><li>DATABASE_URL / REDIS_URL</li><li>COOKIE_SECRET</li><li>ADMIN_PASSWORD</li><li>IP_HASH_SECRET</li></ul></div>
+            <div class="card"><span class="card-title">초대와 식별</span><ul><li>초대 토큰은 해시로 저장</li><li>브라우저 actor cookie</li><li>IP 기반 닉네임 자동 적용 금지</li></ul></div>
+            <div class="card pink"><span class="card-title">관리자 보호</span><ul><li>HttpOnly 쿠키 세션</li><li>운영 작업 감사 로그</li><li>영역 초기화 사유 기록</li></ul></div>
+            <div class="card warn"><span class="card-title">Git 위생</span><ul><li>.env, 키, 인증서 ignore</li><li>node_modules/.next 제외</li><li>푸시 전 secret pattern audit</li></ul></div>
+          </div>
+          <p class="speaker-note">최근 푸시 전에도 보안 파일명과 high-confidence secret 패턴을 검사했고 문제 없이 원격에 올렸다.</p>
+        </article>
+
+        <article class="slide" data-number="11 / 14">
+          <header class="eyebrow">AI-assisted Development</header>
+          <div class="content">
+            <h2>AI는 개발자를 대체한 것이 아니라<br />검증 루프를 촘촘하게 만든 도구였습니다</h2>
+            <div class="three-col">
+              <div class="card"><span class="big-number">01</span><span class="card-title">전략 탐색</span><p class="lead">공개 캔버스, 친구 기반 기록, 리플레이 공유라는 선택지를 비교하고 제품 가설을 정리했습니다.</p></div>
+              <div class="card pink"><span class="big-number">02</span><span class="card-title">구현 분해</span><p class="lead">방, 초대, 멤버, daily canvas, Quick Pixel, 관리자 기능을 작게 나눠 테스트 가능한 단위로 만들었습니다.</p></div>
+              <div class="card ok"><span class="big-number">03</span><span class="card-title">리스크 점검</span><p class="lead">보안 ignore, secret audit, 커밋 분할, 배포 가이드까지 사람이 놓치기 쉬운 작업을 체크리스트화했습니다.</p></div>
+            </div>
+          </div>
+          <p class="speaker-note">AI 활용은 “코드를 많이 썼다”보다 “의사결정과 검증 속도를 높였다”로 말해야 신뢰도가 높다.</p>
+        </article>
+
+        <article class="slide" data-number="12 / 14">
+          <header class="eyebrow">What AI Changed</header>
+          <div class="content two-col">
+            <div class="card">
+              <span class="card-title">좋아진 점</span>
+              <ul><li>기획 문서 → 구현 계획 → 테스트 항목으로 빠르게 연결</li><li>역할별 관점으로 제품 방향을 재검토</li><li>커밋 히스토리를 설명 가능한 단위로 재정렬</li><li>반복 검증 명령을 놓치지 않게 함</li></ul>
+            </div>
+            <div class="card pink">
+              <span class="card-title">조심한 점</span>
+              <ul><li>AI 제안을 그대로 수용하지 않고 제품 원칙으로 필터링</li><li>비밀값과 생성물은 Git에서 제외</li><li>테스트와 타입체크를 통과해야 완료로 판단</li><li>과한 기능은 로드맵으로 미룸</li></ul>
+            </div>
+          </div>
+          <p class="lead">결과적으로 AI는 <strong>속도</strong>보다 <strong>결정의 품질과 회고 가능성</strong>에 더 크게 기여했습니다.</p>
+          <p class="speaker-note">대표/상사는 AI 활용의 위험도 궁금해한다. 좋아진 점과 통제 장치를 함께 말한다.</p>
+        </article>
+
+        <article class="slide" data-number="13 / 14">
+          <header class="eyebrow">Lessons Learned</header>
+          <div class="content">
+            <h2>이 개발에서 얻은<br />가장 중요한 판단</h2>
+            <div class="grid-2x2">
+              <div class="card"><span class="card-title">1. 기술 MVP ≠ 제품 MVP</span><p class="lead">실시간 캔버스가 동작해도, 사용자가 친구에게 보낼 이유가 없으면 제품 검증은 끝나지 않습니다.</p></div>
+              <div class="card"><span class="card-title">2. 첫 행동은 짧아야 한다</span><p class="lead">처음부터 픽셀 아트를 요구하지 않고, 닉네임과 한 칸 남기기로 진입 부담을 줄였습니다.</p></div>
+              <div class="card"><span class="card-title">3. 운영 기능은 MVP 범위다</span><p class="lead">공유되는 캔버스라면 관리자, 복구, 감사 로그는 나중 일이 아니라 신뢰의 기반입니다.</p></div>
+              <div class="card"><span class="card-title">4. AI는 명확한 계약에서 강하다</span><p class="lead">공통 타입, 테스트, 배포 체크리스트처럼 검증 가능한 경계가 있을 때 가장 효과적이었습니다.</p></div>
+            </div>
+          </div>
+          <p class="speaker-note">교훈은 추상적으로 끝내지 않고 다음 의사결정으로 이어지게 한다.</p>
+        </article>
+
+        <article class="slide" data-number="14 / 14">
+          <header class="eyebrow">Decision Request</header>
+          <div class="content two-col">
+            <div>
+              <h2>다음 의사결정은<br />Phase 2 실험 진입입니다</h2>
+              <p class="lead">현재 MVP는 친구 방과 초대 기반을 만들었습니다. 이제 검증해야 할 질문은 “하루 기록으로 반복 사용이 생기는가?”입니다.</p>
+            </div>
+            <div class="card ok">
+              <span class="card-title">제안하는 30일 실험</span>
+              <ol><li>Daily canvas 자동 생성/마감</li><li>첫 참여 3초 Quick Pixel 개선</li><li>참여자 목록과 친구별 기여 표시</li><li>웹 리플레이와 공유 링크</li><li>지표: 첫 픽셀 전환율, 방당 참여자 수, 공유 링크 재방문</li></ol>
+            </div>
+          </div>
+          <footer class="footer-note">요청: 영상 export나 결제보다 Daily Pixel Log 검증에 먼저 집중하겠습니다.</footer>
+          <p class="speaker-note">마지막은 대표/상사에게 “무엇을 승인하면 되는지”가 보이게 끝낸다.</p>
+        </article>
+      </section>
+    </div>
+
+    <nav class="controls" aria-label="슬라이드 조작">
+      <div class="control-group">
+        <button type="button" id="prev">← 이전</button>
+        <button type="button" id="next">다음 →</button>
+        <button type="button" id="notes">발표자 메모</button>
+      </div>
+      <div class="progress" id="progress" aria-hidden="true"></div>
+      <div>← → / Space 이동 · N 메모 · P 인쇄</div>
+    </nav>
+  </main>
+
+  <script>
+    const deck = document.querySelector('#deck');
+    const slides = Array.from(document.querySelectorAll('.slide'));
+    const progress = document.querySelector('#progress');
+    let index = Number(localStorage.getItem('pixel-world-deck-slide') || 0);
+    if (!Number.isInteger(index) || index < 0 || index >= slides.length) index = 0;
+
+    slides.forEach((_, i) => {
+      const dot = document.createElement('span');
+      dot.className = 'dot';
+      dot.dataset.index = String(i);
+      progress.appendChild(dot);
+    });
+
+    function render() {
+      slides.forEach((slide, i) => slide.classList.toggle('active', i === index));
+      Array.from(progress.children).forEach((dot, i) => dot.classList.toggle('active', i === index));
+      localStorage.setItem('pixel-world-deck-slide', String(index));
+      document.title = `${index + 1}/${slides.length} · Pixel World 개발기`;
+    }
+
+    function go(delta) {
+      index = Math.max(0, Math.min(slides.length - 1, index + delta));
+      render();
+    }
+
+    document.querySelector('#prev').addEventListener('click', () => go(-1));
+    document.querySelector('#next').addEventListener('click', () => go(1));
+    document.querySelector('#notes').addEventListener('click', () => deck.classList.toggle('show-notes'));
+    progress.addEventListener('click', event => {
+      const target = event.target.closest('.dot');
+      if (!target) return;
+      index = Number(target.dataset.index);
+      render();
+    });
+
+    window.addEventListener('keydown', event => {
+      if (['ArrowRight', 'PageDown', ' '].includes(event.key)) { event.preventDefault(); go(1); }
+      if (['ArrowLeft', 'PageUp'].includes(event.key)) { event.preventDefault(); go(-1); }
+      if (event.key.toLowerCase() === 'n') deck.classList.toggle('show-notes');
+      if (event.key.toLowerCase() === 'p') window.print();
+    });
+
+    render();
+  </script>
+</body>
+</html>
