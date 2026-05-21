@@ -24,6 +24,7 @@ const MIN_CANVAS_ZOOM = 1;
 const MAX_CANVAS_ZOOM = 4;
 const CANVAS_ZOOM_LEVELS = [MIN_CANVAS_ZOOM, 1.5, 2, 3, MAX_CANVAS_ZOOM] as const;
 const CANVAS_ZOOM_STEP = 0.05;
+const CANVAS_DRAG_ACTIVATION_DISTANCE = 6;
 
 type PointerPosition = {
   x: number;
@@ -32,6 +33,7 @@ type PointerPosition = {
 
 type DragState = PointerPosition & {
   pointerId: number;
+  hasMoved: boolean;
   scrollLeft: number;
   scrollTop: number;
 };
@@ -109,6 +111,14 @@ function nextCanvasZoom(currentZoom: number, direction: 1 | -1): number {
 
 function pointerDistance(first: PointerPosition, second: PointerPosition) {
   return Math.hypot(first.x - second.x, first.y - second.y);
+}
+
+function capturePointer(element: HTMLElement, pointerId: number) {
+  try {
+    element.setPointerCapture(pointerId);
+  } catch {
+    // Pointer capture is a progressive enhancement for drag/pinch handling.
+  }
 }
 
 function bitmapBackingSize(width: number, height: number): { width: number; height: number } {
@@ -324,15 +334,12 @@ export const CanvasBoard = memo(function CanvasBoard({
       return;
     }
 
-    try {
-      event.currentTarget.setPointerCapture(event.pointerId);
-    } catch {
-      // Pointer capture is a progressive enhancement for drag/pinch handling.
-    }
-
     pointerPositionsRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
 
     if (pointerPositionsRef.current.size >= 2) {
+      for (const pointerId of pointerPositionsRef.current.keys()) {
+        capturePointer(event.currentTarget, pointerId);
+      }
       const [first, second] = Array.from(pointerPositionsRef.current.values());
       if (first && second) {
         pinchStateRef.current = {
@@ -347,6 +354,7 @@ export const CanvasBoard = memo(function CanvasBoard({
     if (canvasZoom > MIN_CANVAS_ZOOM) {
       dragStateRef.current = {
         pointerId: event.pointerId,
+        hasMoved: false,
         x: event.clientX,
         y: event.clientY,
         scrollLeft: viewport.scrollLeft,
@@ -377,6 +385,17 @@ export const CanvasBoard = memo(function CanvasBoard({
 
     const dragState = dragStateRef.current;
     if (dragState && dragState.pointerId === event.pointerId) {
+      const deltaX = event.clientX - dragState.x;
+      const deltaY = event.clientY - dragState.y;
+      if (!dragState.hasMoved && Math.hypot(deltaX, deltaY) < CANVAS_DRAG_ACTIVATION_DISTANCE) {
+        return;
+      }
+
+      if (!dragState.hasMoved) {
+        dragState.hasMoved = true;
+        capturePointer(event.currentTarget, event.pointerId);
+      }
+
       viewport.scrollLeft = dragState.scrollLeft - (event.clientX - dragState.x);
       viewport.scrollTop = dragState.scrollTop - (event.clientY - dragState.y);
       event.preventDefault();
@@ -387,6 +406,9 @@ export const CanvasBoard = memo(function CanvasBoard({
     pointerPositionsRef.current.delete(event.pointerId);
 
     if (dragStateRef.current?.pointerId === event.pointerId) {
+      if (dragStateRef.current.hasMoved) {
+        event.preventDefault();
+      }
       dragStateRef.current = null;
     }
 

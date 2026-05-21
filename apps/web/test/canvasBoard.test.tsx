@@ -36,6 +36,40 @@ describe('CanvasBoard', () => {
     expect(onPlacePixel).toHaveBeenCalledWith(1, 2);
   });
 
+  it('does not capture a simple pixel tap before the browser can deliver its click', () => {
+    const onInspectPixel = vi.fn();
+    const onPlacePixel = vi.fn();
+    const setPointerCapture = vi.fn();
+    const originalSetPointerCapture = HTMLElement.prototype.setPointerCapture;
+    HTMLElement.prototype.setPointerCapture = setPointerCapture;
+
+    try {
+      render(
+        createElement(CanvasBoard, {
+          width: 3,
+          height: 3,
+          pixels,
+          defaultColorHex: '#FFFFFF',
+          selectedColor: '#EF4444',
+          canPlacePixel: true,
+          onInspectPixel,
+          onPlacePixel
+        })
+      );
+
+      const pixel = screen.getByRole('button', { name: '픽셀 1,2' });
+      fireEvent.pointerDown(pixel, { pointerId: 1, clientX: 10, clientY: 10 });
+      fireEvent.pointerUp(pixel, { pointerId: 1, clientX: 10, clientY: 10 });
+      fireEvent.click(pixel);
+
+      expect(setPointerCapture).not.toHaveBeenCalled();
+      expect(onInspectPixel).toHaveBeenCalledWith('#38BDF8');
+      expect(onPlacePixel).toHaveBeenCalledWith(1, 2);
+    } finally {
+      HTMLElement.prototype.setPointerCapture = originalSetPointerCapture;
+    }
+  });
+
   it('allows eyedropper inspection while placement is unavailable', () => {
     const onInspectPixel = vi.fn();
     const onPlacePixel = vi.fn();
