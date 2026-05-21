@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   DEFAULT_CANVAS_COLOR,
   DEFAULT_PALETTE,
+  FRIEND_ROOM_ROUTES,
   type CanvasSnapshotPayload,
   type CooldownUpdatedPayload,
   type HexColor,
@@ -12,13 +13,12 @@ import {
   type PixelUpdatedPayload,
   type PlacementRejectedPayload,
   type PresenceUpdatedPayload,
-  type PublicRecentPixelEvent,
-  type RecentEventsUpdatedPayload
+  normalizeInviteCode
 } from '@pixel-world/shared';
 import { CanvasBoard } from './CanvasBoard';
 import { ColorTools } from './ColorTools';
-import { RecentEvents } from './RecentEvents';
 import { StatusBar } from './StatusBar';
+import { downloadCanvasImage } from '../lib/canvasImageDownload';
 import { createRoomInvite, getRoomToday, type InviteCredential, type RoomTodayResponseDto } from '../lib/roomApi';
 import { createPixelSocket, type PixelSocket } from '../lib/socketClient';
 
@@ -36,6 +36,19 @@ function buildInviteCredential(inviteToken?: string, inviteCode?: string): Invit
     return { inviteCode };
   }
   return undefined;
+}
+
+function normalizeVisibleInviteCode(inviteCode?: string): string {
+  return inviteCode ? normalizeInviteCode(inviteCode) ?? '' : '';
+}
+
+function buildInviteCodeUrl(inviteCode: string): string {
+  const inviteCodePath = FRIEND_ROOM_ROUTES.inviteCode(inviteCode);
+  if (typeof window === 'undefined') {
+    return inviteCodePath;
+  }
+
+  return new URL(inviteCodePath, window.location.origin).toString();
 }
 
 function deadlineFromTimestamp(timestamp: unknown) {
@@ -113,8 +126,6 @@ export function RoomCanvasShell({ roomPublicId, inviteToken, inviteCode }: RoomC
   const [selectedColor, setSelectedColor] = useState<HexColor>(DEFAULT_PALETTE[9]!);
   const [eyedropperColor, setEyedropperColor] = useState<HexColor | null>(null);
   const [pixels, setPixels] = useState<PixelRecord[]>([]);
-  const [myRecentEvents, setMyRecentEvents] = useState<PublicRecentPixelEvent[]>([]);
-  const [roomRecentEvents, setRoomRecentEvents] = useState<PublicRecentPixelEvent[]>([]);
   const [onlineCount, setOnlineCount] = useState(0);
   const [connected, setConnected] = useState(false);
   const [hasSnapshot, setHasSnapshot] = useState(false);
@@ -124,14 +135,36 @@ export function RoomCanvasShell({ roomPublicId, inviteToken, inviteCode }: RoomC
   const [canvasWidth, setCanvasWidth] = useState(0);
   const [canvasHeight, setCanvasHeight] = useState(0);
   const [defaultColorHex, setDefaultColorHex] = useState<HexColor>(DEFAULT_CANVAS_COLOR);
-  const [inviteUrl, setInviteUrl] = useState('');
-  const [generatedInviteCode, setGeneratedInviteCode] = useState('');
-  const [inviteShareMessage, setInviteShareMessage] = useState<string | null>(null);
-  const [inviteShareError, setInviteShareError] = useState<string | null>(null);
+  const [visibleInviteCode, setVisibleInviteCode] = useState(() => normalizeVisibleInviteCode(inviteCode));
+  const [isPreparingInviteCode, setIsPreparingInviteCode] = useState(false);
+  const [inviteCodeProvisionFailed, setInviteCodeProvisionFailed] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState<string | null>(null);
+  const [snackbarError, setSnackbarError] = useState<string | null>(null);
   const [isCreatingInvite, setIsCreatingInvite] = useState(false);
   const socketRef = useRef<PixelSocket | null>(null);
   const pixelAllowanceRef = useRef<PixelAllowanceStatePayload | null>(null);
   const todayRef = useRef<RoomTodayResponseDto | null>(null);
+
+  useEffect(() => {
+    const normalizedInviteCode = normalizeVisibleInviteCode(inviteCode);
+    if (normalizedInviteCode) {
+      setVisibleInviteCode(normalizedInviteCode);
+      setInviteCodeProvisionFailed(false);
+    }
+  }, [inviteCode]);
+
+  useEffect(() => {
+    if (!snackbarMessage && !snackbarError) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setSnackbarMessage(null);
+      setSnackbarError(null);
+    }, 2800);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [snackbarError, snackbarMessage]);
 
   useEffect(() => {
     todayRef.current = today;
@@ -140,6 +173,39 @@ export function RoomCanvasShell({ roomPublicId, inviteToken, inviteCode }: RoomC
   useEffect(() => {
     pixelAllowanceRef.current = pixelAllowance;
   }, [pixelAllowance]);
+
+  useEffect(() => {
+    if (!today || visibleInviteCode || inviteCodeProvisionFailed || isCreatingInvite) {
+      return;
+    }
+
+    let cancelled = false;
+    setIsPreparingInviteCode(true);
+
+    createRoomInvite(roomPublicId, buildInviteCredential(inviteToken, inviteCode))
+      .then((response) => {
+        if (cancelled) {
+          return;
+        }
+
+        setVisibleInviteCode(response.inviteCode);
+        setInviteCodeProvisionFailed(false);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setInviteCodeProvisionFailed(true);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsPreparingInviteCode(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [inviteCode, inviteCodeProvisionFailed, inviteToken, isCreatingInvite, roomPublicId, today, visibleInviteCode]);
 
   useEffect(() => {
     let cancelled = false;
@@ -185,8 +251,6 @@ export function RoomCanvasShell({ roomPublicId, inviteToken, inviteCode }: RoomC
           setCanvasHeight(snapshot.height);
           setDefaultColorHex(snapshot.defaultColorHex);
           setPixels(snapshot.pixels);
-          setMyRecentEvents(snapshot.recentEvents);
-          setRoomRecentEvents(snapshot.roomRecentEvents ?? []);
           setOnlineCount(snapshot.onlineCount);
           pixelAllowanceRef.current = snapshot.pixelAllowance;
           setPixelAllowance(snapshot.pixelAllowance);
@@ -204,16 +268,6 @@ export function RoomCanvasShell({ roomPublicId, inviteToken, inviteCode }: RoomC
         });
         socket.on('presenceUpdated', ({ onlineCount: nextOnlineCount }: PresenceUpdatedPayload) => {
           setOnlineCount(nextOnlineCount);
-        });
-        socket.on('roomRecentEventsUpdated', (update: RecentEventsUpdatedPayload) => {
-          if (isForRoom(todayRef.current, update)) {
-            setRoomRecentEvents(update.events);
-          }
-        });
-        socket.on('myRecentEventsUpdated', (update: RecentEventsUpdatedPayload) => {
-          if (isForRoom(todayRef.current, update)) {
-            setMyRecentEvents(update.events);
-          }
         });
         socket.on('cooldownUpdated', (update: CooldownUpdatedPayload) => {
           pixelAllowanceRef.current = update;
@@ -285,36 +339,55 @@ export function RoomCanvasShell({ roomPublicId, inviteToken, inviteCode }: RoomC
     [selectedColor, today]
   );
 
+  const handleDownloadCanvasImage = useCallback(async () => {
+    setSnackbarMessage(null);
+    setSnackbarError(null);
+
+    try {
+      await downloadCanvasImage({
+        width: canvasWidth,
+        height: canvasHeight,
+        defaultColorHex,
+        pixels,
+      }, { roomName: today?.roomName ?? 'pixel-world' });
+      setSnackbarMessage('캔버스 작품 이미지를 저장했어요.');
+    } catch {
+      setSnackbarError('캔버스 작품 이미지를 저장하지 못했어요. 브라우저 설정을 확인해 주세요.');
+    }
+  }, [canvasHeight, canvasWidth, defaultColorHex, pixels, today?.roomName]);
+
   const handleCopyInvite = useCallback(async () => {
     if (isCreatingInvite) {
       return;
     }
 
     setIsCreatingInvite(true);
-    setInviteShareMessage(null);
-    setInviteShareError(null);
+    setInviteCodeProvisionFailed(false);
+    setSnackbarMessage(null);
+    setSnackbarError(null);
 
     try {
-      const response = await createRoomInvite(roomPublicId, buildInviteCredential(inviteToken, inviteCode));
-      setInviteUrl(response.inviteUrl);
-      setGeneratedInviteCode(response.inviteCode);
+      let inviteCodeToCopy = visibleInviteCode;
 
-      try {
-        if (navigator.clipboard?.writeText) {
-          await navigator.clipboard.writeText(response.inviteUrl);
-          setInviteShareMessage('초대 주소를 복사했어요. 친구에게 바로 보내면 됩니다.');
-        } else {
-          setInviteShareMessage('초대 주소를 만들었어요. 아래 주소를 직접 복사해 주세요.');
-        }
-      } catch {
-        setInviteShareMessage('초대 주소를 만들었어요. 아래 주소를 직접 복사해 주세요.');
+      if (!inviteCodeToCopy) {
+        const response = await createRoomInvite(roomPublicId, buildInviteCredential(inviteToken, inviteCode));
+        inviteCodeToCopy = response.inviteCode;
+        setVisibleInviteCode(response.inviteCode);
       }
+
+      if (!navigator.clipboard?.writeText) {
+        setSnackbarError('브라우저가 복사를 막았어요. 입장 코드를 친구에게 알려주세요.');
+        return;
+      }
+
+      await navigator.clipboard.writeText(buildInviteCodeUrl(inviteCodeToCopy));
+      setSnackbarMessage('초대 주소를 복사했어요.');
     } catch {
-      setInviteShareError('초대 주소를 만들지 못했습니다. 잠시 후 다시 시도해 주세요.');
+      setSnackbarError('초대 주소를 복사하지 못했어요. 잠시 후 다시 시도해 주세요.');
     } finally {
       setIsCreatingInvite(false);
     }
-  }, [inviteCode, inviteToken, isCreatingInvite, roomPublicId]);
+  }, [inviteCode, inviteToken, isCreatingInvite, roomPublicId, visibleInviteCode]);
 
   if (notFound) {
     return (
@@ -348,23 +421,35 @@ export function RoomCanvasShell({ roomPublicId, inviteToken, inviteCode }: RoomC
           <span>오늘의 방 캔버스</span>
         </div>
         <div className="room-invite-share" aria-live="polite">
-          <button className="ghost-action" type="button" onClick={handleCopyInvite} disabled={isCreatingInvite}>
-            {isCreatingInvite ? '초대 주소 만드는 중…' : '초대 주소 복사'}
+          <div className="room-invite-code-card" aria-label="4자리 입장 코드">
+            <span>입장 코드</span>
+            {visibleInviteCode ? (
+              <strong>{visibleInviteCode}</strong>
+            ) : (
+              <em>{isPreparingInviteCode ? '준비 중…' : '복사하면 생성돼요'}</em>
+            )}
+          </div>
+          <button
+            className="ghost-action"
+            type="button"
+            onClick={handleCopyInvite}
+            disabled={isCreatingInvite || (isPreparingInviteCode && !visibleInviteCode)}
+          >
+            {isCreatingInvite ? '초대 주소 복사 중…' : '초대 주소 복사'}
           </button>
-          {inviteShareMessage ? <p className="form-message">{inviteShareMessage}</p> : null}
-          {inviteShareError ? (
-            <p className="form-message form-message--error" role="alert">
-              {inviteShareError}
-            </p>
-          ) : null}
-          {generatedInviteCode ? (
-            <p className="room-invite-code">
-              입장 코드 <strong>{generatedInviteCode}</strong>
-            </p>
-          ) : null}
-          {inviteUrl ? <a href={inviteUrl}>{inviteUrl}</a> : null}
         </div>
       </header>
+
+      {snackbarMessage ? (
+        <p className="snackbar" role="status" aria-live="polite">
+          {snackbarMessage}
+        </p>
+      ) : null}
+      {snackbarError ? (
+        <p className="snackbar snackbar--error" role="alert">
+          {snackbarError}
+        </p>
+      ) : null}
 
       <div className="main-grid">
         <section className="panel canvas-board-panel" aria-label="방 캔버스">
@@ -382,11 +467,22 @@ export function RoomCanvasShell({ roomPublicId, inviteToken, inviteCode }: RoomC
 
         <aside className="side-stack" aria-label="방 캔버스 도구">
           <StatusBar onlineCount={onlineCount} remainingMs={remainingMs} connected={connected} allowance={pixelAllowance} />
+          <section className="panel canvas-art-download" aria-label="캔버스 작품 이미지 저장">
+            <h2>작품 저장</h2>
+            <p>
+              현재 {canvasWidth}×{canvasHeight} 캔버스 전체 작품을 격자선 없는 PNG로 저장해요.
+            </p>
+            <button
+              className="secondary-link"
+              type="button"
+              onClick={handleDownloadCanvasImage}
+            >
+              작품 이미지 저장
+            </button>
+          </section>
           <section aria-label="방 직접 칠하기 도구">
             <ColorTools selectedColor={selectedColor} eyedropperColor={eyedropperColor} onColorChange={setSelectedColor} />
           </section>
-          <RecentEvents events={roomRecentEvents} title="방 최근 활동" ariaLabel="방 최근 픽셀 변경" />
-          <RecentEvents events={myRecentEvents} />
         </aside>
       </div>
     </main>

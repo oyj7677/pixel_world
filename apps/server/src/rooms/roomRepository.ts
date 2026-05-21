@@ -1,10 +1,11 @@
 import {
   DEFAULT_COOLDOWN_MS,
-  FRIEND_ROOM_CANVAS_SIZE,
+  FRIEND_ROOM_DEFAULT_CANVAS_DIMENSION,
   FRIEND_ROOM_DEFAULT_TARGET_COMPLETION_MS,
   DEFAULT_PIXEL_ALLOWANCE_MAX_STORAGE_MS,
   calculateDynamicAllowanceIntervalMs,
   calculateRequiredPixelCount,
+  isValidRoomCanvasDimension,
   normalizeInviteCode
 } from '@pixel-world/shared';
 import type { DbClient } from '../db/index';
@@ -100,6 +101,7 @@ export interface CreateRoomWithTodayCanvasInput {
   expectedParticipantCount?: number;
   targetCompletionMs?: number;
   pixelAllowanceMaxStorageMs?: number;
+  canvasDimension?: number;
 }
 
 export interface CreatedRoomWithTodayCanvas {
@@ -430,8 +432,12 @@ export async function createRoomWithTodayCanvas(
 ): Promise<CreatedRoomWithTodayCanvas> {
   const client = 'connect' in db ? await db.connect() : db;
   const shouldRelease = 'connect' in db;
-  const width = FRIEND_ROOM_CANVAS_SIZE.width;
-  const height = FRIEND_ROOM_CANVAS_SIZE.height;
+  const canvasDimension = input.canvasDimension ?? FRIEND_ROOM_DEFAULT_CANVAS_DIMENSION;
+  if (!isValidRoomCanvasDimension(canvasDimension)) {
+    throw new Error('invalid_room_canvas_dimension');
+  }
+  const width = canvasDimension;
+  const height = canvasDimension;
   const requiredPixelCount = calculateRequiredPixelCount({ width, height });
   const targetCompletionMs = input.targetCompletionMs ?? FRIEND_ROOM_DEFAULT_TARGET_COMPLETION_MS;
   const expectedParticipantCount = input.expectedParticipantCount ?? 4;

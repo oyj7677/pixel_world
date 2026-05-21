@@ -124,11 +124,15 @@ function delay(ms: number): Promise<void> {
   });
 }
 
-async function createRoom(name = `${TEST_PREFIX} created room`, ownerDisplayName = `${TEST_PREFIX} 방장`) {
+async function createRoom(
+  name = `${TEST_PREFIX} created room`,
+  ownerDisplayName = `${TEST_PREFIX} 방장`,
+  canvasDimension?: number,
+) {
   const response = await app!.inject({
     method: 'POST',
     url: '/api/rooms',
-    payload: { name, ownerDisplayName },
+    payload: { name, ownerDisplayName, ...(canvasDimension ? { canvasDimension } : {}) },
     headers: { 'x-forwarded-for': RAW_IP },
   });
   expect(response.statusCode).toBe(201);
@@ -170,6 +174,7 @@ describe('room routes', () => {
       roomName: `${TEST_PREFIX} name-only room`,
       todayDailyCanvasId: expect.any(String),
       canvasId: expect.stringMatching(/^room_/),
+      canvasSize: FRIEND_ROOM_CANVAS_SIZE,
       inviteUrl: expect.stringMatching(
         /^https:\/\/pixel-world\.test\/i\//,
       ),
@@ -181,6 +186,25 @@ describe('room routes', () => {
     expect(
       response.cookies.some((cookie) => cookie.name === ACTOR_COOKIE),
     ).toBe(true);
+  });
+
+  it('creates a square room canvas with the requested dimension', async () => {
+    const { body } = await createRoom(`${TEST_PREFIX} custom size room`, `${TEST_PREFIX} 방장`, 64);
+
+    expect(body).toEqual(expect.objectContaining({
+      canvasSize: { width: 64, height: 64 },
+    }));
+
+    const landingResponse = await app!.inject({
+      method: 'GET',
+      url: `/api/invite-codes/${body.inviteCode}/landing`,
+    });
+
+    expect(landingResponse.statusCode).toBe(200);
+    expect(landingResponse.json()).toEqual(expect.objectContaining({
+      canvasSize: { width: 64, height: 64 },
+      quickPixelSuggestion: { x: 32, y: 32 },
+    }));
   });
 
   it('loads invite landing metadata with the host nickname', async () => {
@@ -742,7 +766,11 @@ describe('room routes', () => {
     const secondEvent = events.rows[1];
     expect(firstEvent).toBeDefined();
     expect(secondEvent).toBeDefined();
-    expect(firstEvent!.properties).toEqual(expect.objectContaining({ canvasSize: '32x32' }));
+    expect(firstEvent!.properties).toEqual(
+      expect.objectContaining({
+        canvasSize: `${FRIEND_ROOM_CANVAS_SIZE.width}x${FRIEND_ROOM_CANVAS_SIZE.height}`,
+      }),
+    );
     expect(secondEvent!.properties).toEqual(expect.objectContaining({ inviteRoute: '/i/:token' }));
   });
 });

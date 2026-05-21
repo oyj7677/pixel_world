@@ -1,7 +1,33 @@
 import type { HexColor } from './colors';
 import type { PixelAllowanceStatePayload, PublicRecentPixelEvent } from './socketEvents';
 
-export const FRIEND_ROOM_CANVAS_SIZE = { width: 32, height: 32 } as const;
+export const FRIEND_ROOM_DEFAULT_CANVAS_DIMENSION = 48;
+export const FRIEND_ROOM_MIN_CANVAS_DIMENSION = 16;
+export const FRIEND_ROOM_MAX_CANVAS_DIMENSION = 64;
+export const FRIEND_ROOM_CANVAS_SIZE = {
+  width: FRIEND_ROOM_DEFAULT_CANVAS_DIMENSION,
+  height: FRIEND_ROOM_DEFAULT_CANVAS_DIMENSION,
+} as const;
+export const FRIEND_ROOM_CANVAS_DIMENSION_PRESETS = [
+  {
+    id: 'small',
+    label: '작게',
+    dimension: FRIEND_ROOM_DEFAULT_CANVAS_DIMENSION,
+    description: '가볍게 시작하기 좋아요.',
+  },
+  {
+    id: 'medium',
+    label: '중간',
+    dimension: 56,
+    description: '여럿이 칠하기 적당해요.',
+  },
+  {
+    id: 'large',
+    label: '크게',
+    dimension: FRIEND_ROOM_MAX_CANVAS_DIMENSION,
+    description: '더 넓게 그리고 싶을 때 좋아요.',
+  },
+] as const;
 
 export const FRIEND_ROOM_DEFAULT_TARGET_COMPLETION_MS = 6 * 60 * 60 * 1000;
 export const FRIEND_ROOM_MAX_TARGET_COMPLETION_MS = 24 * 60 * 60 * 1000 - 1;
@@ -33,9 +59,18 @@ export function isValidRoomDisplayName(displayName: string): boolean {
   return trimmedDisplayName.length >= 1 && trimmedDisplayName.length <= FRIEND_ROOM_MAX_DISPLAY_NAME_LENGTH;
 }
 
+export function isValidRoomCanvasDimension(canvasDimension: number): boolean {
+  return (
+    Number.isInteger(canvasDimension) &&
+    canvasDimension >= FRIEND_ROOM_MIN_CANVAS_DIMENSION &&
+    canvasDimension <= FRIEND_ROOM_MAX_CANVAS_DIMENSION
+  );
+}
+
 export interface CreateRoomRequestDto {
   name: string;
   ownerDisplayName: string;
+  canvasDimension?: number;
 }
 
 export interface CreateRoomResponseDto {
@@ -44,6 +79,7 @@ export interface CreateRoomResponseDto {
   ownerDisplayName: string;
   todayDailyCanvasId: string;
   canvasId: string;
+  canvasSize: { width: number; height: number };
   inviteUrl: string;
   inviteCode: string;
 }
@@ -68,13 +104,14 @@ export interface InviteLandingResponseDto {
   suggestedParticipantDisplayName?: string;
   todayDailyCanvasId: string;
   canvasId: string;
-  canvasSize: typeof FRIEND_ROOM_CANVAS_SIZE;
+  canvasSize: { width: number; height: number };
   quickPixelSuggestion: QuickPixelSuggestionDto;
 }
 
 export interface QuickPixelRequestDto {
   inviteToken?: string;
   inviteCode?: string;
+  suggestedCoordinate?: { x: number; y: number };
   suggestedColorHex?: HexColor;
   displayName?: string;
 }

@@ -1,15 +1,33 @@
 import { describe, expect, it } from 'vitest';
 import {
+  FRIEND_ROOM_CANVAS_DIMENSION_PRESETS,
   FRIEND_ROOM_CANVAS_SIZE,
+  FRIEND_ROOM_DEFAULT_CANVAS_DIMENSION,
+  FRIEND_ROOM_MAX_CANVAS_DIMENSION,
+  FRIEND_ROOM_MIN_CANVAS_DIMENSION,
   FRIEND_ROOM_ROUTES,
+  isValidRoomCanvasDimension,
   isValidRoomName,
   normalizeInviteCode,
   privacySafeAnalyticsEventNames
 } from '../src/roomContracts';
 
 describe('room contracts', () => {
-  it('fixes the Phase-1 canvas size at 32 by 32', () => {
-    expect(FRIEND_ROOM_CANVAS_SIZE).toEqual({ width: 32, height: 32 });
+  it('defines a bounded square room canvas size range', () => {
+    expect(FRIEND_ROOM_CANVAS_SIZE).toEqual({
+      width: FRIEND_ROOM_DEFAULT_CANVAS_DIMENSION,
+      height: FRIEND_ROOM_DEFAULT_CANVAS_DIMENSION,
+    });
+    expect(isValidRoomCanvasDimension(FRIEND_ROOM_MIN_CANVAS_DIMENSION)).toBe(true);
+    expect(isValidRoomCanvasDimension(FRIEND_ROOM_MAX_CANVAS_DIMENSION)).toBe(true);
+    expect(isValidRoomCanvasDimension(FRIEND_ROOM_MIN_CANVAS_DIMENSION - 1)).toBe(false);
+    expect(isValidRoomCanvasDimension(FRIEND_ROOM_MAX_CANVAS_DIMENSION + 1)).toBe(false);
+    expect(isValidRoomCanvasDimension(32.5)).toBe(false);
+    expect(FRIEND_ROOM_CANVAS_DIMENSION_PRESETS.map((preset) => preset.dimension)).toEqual([
+      FRIEND_ROOM_DEFAULT_CANVAS_DIMENSION,
+      56,
+      FRIEND_ROOM_MAX_CANVAS_DIMENSION,
+    ]);
   });
 
   it('accepts short human room names and rejects empty names', () => {

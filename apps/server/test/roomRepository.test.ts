@@ -109,8 +109,8 @@ describe('room repository', () => {
         name: 'Room Repository Test Room',
         privacy: 'private',
         ownerActorKey: actorKey('owner'),
-        defaultWidth: 32,
-        defaultHeight: 32
+        defaultWidth: 48,
+        defaultHeight: 48
       })
     );
     expect(created.ownerMember).toEqual(
@@ -123,10 +123,10 @@ describe('room repository', () => {
     expect(created.invite.rawCode).toMatch(/^[A-Z0-9]{4}$/);
     expect(created.invite).not.toHaveProperty('codeHash');
     expect(created.dailyCanvas).toEqual(
-      expect.objectContaining({ roomId: created.room.id, canvasId: created.canvas.id, status: 'active', width: 32, height: 32 })
+      expect.objectContaining({ roomId: created.room.id, canvasId: created.canvas.id, status: 'active', width: 48, height: 48 })
     );
     expect(created.canvas).toEqual(
-      expect.objectContaining({ id: created.dailyCanvas.canvasId, width: 32, height: 32, kind: 'room_daily' })
+      expect.objectContaining({ id: created.dailyCanvas.canvasId, width: 48, height: 48, kind: 'room_daily' })
     );
 
     const rowCounts = await pool.query(
@@ -139,6 +139,30 @@ describe('room repository', () => {
     );
 
     expect(rowCounts.rows[0]).toEqual({ owner_members: 1, invites: 1, daily_canvases: 1, canvases: 1 });
+  });
+
+  it('creates square room canvases from the requested dimension', async () => {
+    const created = await createRoomWithTodayCanvas(pool, {
+      name: 'Room Repository Custom Size Test Room',
+      ownerActorKey: actorKey('custom-size-owner'),
+      publicIdPrefix: TEST_PREFIX,
+      inviteSecret: INVITE_SECRET,
+      canvasDimension: 64,
+    });
+
+    expect(created.room).toEqual(expect.objectContaining({
+      defaultWidth: 64,
+      defaultHeight: 64,
+    }));
+    expect(created.dailyCanvas).toEqual(expect.objectContaining({
+      width: 64,
+      height: 64,
+      requiredPixelCount: 4096,
+    }));
+    expect(created.canvas).toEqual(expect.objectContaining({
+      width: 64,
+      height: 64,
+    }));
   });
 
   it('stores only invite token and short-code hashes', async () => {

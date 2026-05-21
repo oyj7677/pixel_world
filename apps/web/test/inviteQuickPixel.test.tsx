@@ -65,6 +65,7 @@ describe('InviteQuickPixel', () => {
     await waitFor(() => {
       expect(placeQuickPixelMock).toHaveBeenCalledWith('room_public_123', {
         inviteToken: 'invite-token-123',
+        suggestedCoordinate: { x: 16, y: 16 },
         suggestedColorHex: '#38BDF8',
         displayName: '준호'
       });
@@ -92,6 +93,7 @@ describe('InviteQuickPixel', () => {
     await waitFor(() => {
       expect(placeQuickPixelMock).toHaveBeenCalledWith('room_public_123', {
         inviteToken: 'invite-token-123',
+        suggestedCoordinate: { x: 16, y: 16 },
         suggestedColorHex: '#38BDF8'
       });
     });
@@ -115,6 +117,7 @@ describe('InviteQuickPixel', () => {
     await waitFor(() => {
       expect(placeQuickPixelMock).toHaveBeenCalledWith('room_public_123', {
         inviteToken: 'invite-token-123',
+        suggestedCoordinate: { x: 16, y: 16 },
         suggestedColorHex: '#38BDF8',
         displayName: '준호'
       });
@@ -131,6 +134,7 @@ describe('InviteQuickPixel', () => {
     await waitFor(() => {
       expect(placeQuickPixelMock).toHaveBeenCalledWith('room_public_123', {
         inviteCode: 'AB12',
+        suggestedCoordinate: { x: 16, y: 16 },
         suggestedColorHex: '#38BDF8',
         displayName: '코드손님'
       });

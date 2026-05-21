@@ -3,7 +3,7 @@ import '@testing-library/jest-dom/vitest';
 import { createElement } from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { CanvasSnapshotPayload, PublicRecentPixelEvent } from '@pixel-world/shared';
+import type { CanvasSnapshotPayload } from '@pixel-world/shared';
 import { RoomCanvasShell } from '../src/components/RoomCanvasShell';
 import { createRoomInvite, getRoomToday } from '../src/lib/roomApi';
 import { createPixelSocket } from '../src/lib/socketClient';
@@ -123,6 +123,69 @@ describe('RoomCanvasShell', () => {
     });
   });
 
+  it('downloads the whole canvas artwork as an image', async () => {
+    const fillRect = vi.fn();
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+    const originalGetContext = HTMLCanvasElement.prototype.getContext;
+    const originalToBlob = HTMLCanvasElement.prototype.toBlob;
+    const originalToDataURL = HTMLCanvasElement.prototype.toDataURL;
+    Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
+      configurable: true,
+      value: vi.fn(() => ({
+        fillRect,
+        fillStyle: '',
+        imageSmoothingEnabled: true
+      }))
+    });
+    Object.defineProperty(HTMLCanvasElement.prototype, 'toBlob', {
+      configurable: true,
+      value: undefined
+    });
+    Object.defineProperty(HTMLCanvasElement.prototype, 'toDataURL', {
+      configurable: true,
+      value: vi.fn(() => 'data:image/png;base64,pixel')
+    });
+
+    try {
+      render(createElement(RoomCanvasShell, { roomPublicId: 'room_public_123' }));
+
+      await waitFor(() => expect(socketHandlers.has('connect')).toBe(true));
+      emitSocket('connect', undefined);
+      emitSocket('canvasSnapshot', snapshot({
+        pixels: [
+          { x: 0, y: 1, colorHex: '#22C55E', updatedAt: '2026-05-21T12:00:00.000Z' },
+          { x: 1, y: 0, colorHex: '#38BDF8', updatedAt: '2026-05-21T12:00:01.000Z' },
+        ]
+      }));
+
+      expect(await screen.findByText('현재 2×2 캔버스 전체 작품을 격자선 없는 PNG로 저장해요.')).toBeVisible();
+      const downloadButton = await screen.findByRole('button', { name: '작품 이미지 저장' });
+      expect(downloadButton).toBeEnabled();
+
+      fireEvent.click(downloadButton);
+
+      await waitFor(() => expect(clickSpy).toHaveBeenCalledTimes(1));
+      expect(fillRect).toHaveBeenCalledWith(0, 0, 32, 32);
+      expect(fillRect).toHaveBeenCalledWith(0, 16, 16, 16);
+      expect(fillRect).toHaveBeenCalledWith(16, 0, 16, 16);
+      expect(screen.getByText('캔버스 작품 이미지를 저장했어요.')).toBeVisible();
+    } finally {
+      Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
+        configurable: true,
+        value: originalGetContext
+      });
+      Object.defineProperty(HTMLCanvasElement.prototype, 'toBlob', {
+        configurable: true,
+        value: originalToBlob
+      });
+      Object.defineProperty(HTMLCanvasElement.prototype, 'toDataURL', {
+        configurable: true,
+        value: originalToDataURL
+      });
+      clickSpy.mockRestore();
+    }
+  });
+
   it('locally saves a manual room pixel after nextPixelSavedAt passes without a socket event', async () => {
     render(createElement(RoomCanvasShell, { roomPublicId: 'room_public_123' }));
 
@@ -192,47 +255,7 @@ describe('RoomCanvasShell', () => {
     }
   });
 
-  it('shows room recent activity separately from personal recent activity', async () => {
-    render(createElement(RoomCanvasShell, { roomPublicId: 'room_public_123' }));
-
-    await waitFor(() => expect(socketHandlers.has('connect')).toBe(true));
-    emitSocket('connect', undefined);
-    const myEvent: PublicRecentPixelEvent = {
-      id: 'mine-1',
-      roomPublicId: 'room_public_123',
-      dailyCanvasId: 'daily-1',
-      x: 0,
-      y: 1,
-      previousColorHex: null,
-      newColorHex: '#38BDF8',
-      source: 'user',
-      createdAt: new Date().toISOString()
-    };
-    const roomEvent: PublicRecentPixelEvent = {
-      id: 'room-1',
-      roomPublicId: 'room_public_123',
-      dailyCanvasId: 'daily-1',
-      x: 1,
-      y: 0,
-      previousColorHex: null,
-      newColorHex: '#F97316',
-      source: 'user',
-      createdAt: new Date().toISOString()
-    };
-    emitSocket('canvasSnapshot', snapshot({
-      recentEvents: [myEvent],
-      roomRecentEvents: [roomEvent]
-    }));
-
-    expect(await screen.findByRole('region', { name: '방 최근 픽셀 변경' })).toBeVisible();
-    expect(screen.getByRole('heading', { name: '방 최근 활동' })).toBeVisible();
-    expect(screen.getByText('#F97316')).toBeVisible();
-    expect(screen.getByRole('region', { name: '내 최근 픽셀 변경' })).toBeVisible();
-    expect(screen.getByRole('heading', { name: '내 최근 활동' })).toBeVisible();
-    expect(screen.getByText('#38BDF8')).toBeVisible();
-  });
-
-  it('creates and copies a fresh invite address from the room screen', async () => {
+  it('creates a code-backed invite address without showing the raw address', async () => {
     const writeText = vi.fn(async () => undefined);
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
@@ -250,16 +273,15 @@ describe('RoomCanvasShell', () => {
     emitSocket('connect', undefined);
     emitSocket('canvasSnapshot', snapshot());
 
+    await waitFor(() => expect(createRoomInvite).toHaveBeenCalledWith('room_public_123', undefined));
+    expect(await screen.findByText('CD34')).toBeVisible();
+
     await fireEvent.click(await screen.findByRole('button', { name: '초대 주소 복사' }));
 
-    await waitFor(() => expect(createRoomInvite).toHaveBeenCalledWith('room_public_123', undefined));
-    expect(writeText).toHaveBeenCalledWith('http://localhost:3000/i/copied-token');
-    expect(screen.getByText('초대 주소를 복사했어요. 친구에게 바로 보내면 됩니다.')).toBeVisible();
-    expect(screen.getByText('CD34')).toBeVisible();
-    expect(screen.getByRole('link', { name: 'http://localhost:3000/i/copied-token' })).toHaveAttribute(
-      'href',
-      'http://localhost:3000/i/copied-token'
-    );
+    expect(writeText).toHaveBeenCalledWith(expect.stringContaining('/c/CD34'));
+    await waitFor(() => expect(screen.getByText('초대 주소를 복사했어요.')).toBeVisible());
+    expect(createRoomInvite).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('link', { name: 'http://localhost:3000/i/copied-token' })).not.toBeInTheDocument();
   });
 
   it('keeps invite token access on mobile browsers that drop the API cookie', async () => {
@@ -283,6 +305,12 @@ describe('RoomCanvasShell', () => {
   });
 
   it('keeps invite code access on mobile browsers that drop the API cookie', async () => {
+    const writeText = vi.fn(async () => undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText }
+    });
+
     render(createElement(RoomCanvasShell, { roomPublicId: 'room_public_123', inviteCode: 'AB12' }));
 
     await waitFor(() => expect(socketHandlers.has('connect')).toBe(true));
@@ -297,8 +325,12 @@ describe('RoomCanvasShell', () => {
 
     emitSocket('connect', undefined);
     emitSocket('canvasSnapshot', snapshot());
+    expect(await screen.findByText('AB12')).toBeVisible();
+
     await fireEvent.click(await screen.findByRole('button', { name: '초대 주소 복사' }));
 
-    await waitFor(() => expect(createRoomInvite).toHaveBeenCalledWith('room_public_123', { inviteCode: 'AB12' }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(expect.stringContaining('/c/AB12')));
+    expect(createRoomInvite).not.toHaveBeenCalled();
+    expect(screen.getByText('초대 주소를 복사했어요.')).toBeVisible();
   });
 });

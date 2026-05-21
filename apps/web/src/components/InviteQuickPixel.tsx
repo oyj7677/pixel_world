@@ -67,6 +67,10 @@ export function InviteQuickPixel({ landing, inviteToken, inviteCode }: InviteQui
     try {
       const placed = await placeQuickPixel(landing.roomPublicId, {
         ...inviteCredential,
+        suggestedCoordinate: {
+          x: landing.quickPixelSuggestion.x,
+          y: landing.quickPixelSuggestion.y,
+        },
         suggestedColorHex: suggestedColor,
         ...(needsDisplayName ? { displayName: trimmedDisplayName } : {})
       });

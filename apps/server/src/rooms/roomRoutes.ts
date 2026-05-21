@@ -1,5 +1,5 @@
 import {
-  FRIEND_ROOM_CANVAS_SIZE,
+  FRIEND_ROOM_DEFAULT_CANVAS_DIMENSION,
   FRIEND_ROOM_ROUTES,
   type CreateRoomInviteResponseDto,
   type CreateRoomRequestDto,
@@ -8,6 +8,7 @@ import {
   type OptionalDisplayNameRequestDto,
   type OptionalDisplayNameResponseDto,
   type QuickPixelRequestDto,
+  isValidRoomCanvasDimension,
   isValidRoomDisplayName,
   isValidRoomName,
   normalizeInviteCode,
@@ -69,14 +70,22 @@ function parseCreateRoomBody(body: unknown): CreateRoomRequestDto | null {
 
   const name = (body as { name?: unknown }).name;
   const ownerDisplayName = (body as { ownerDisplayName?: unknown }).ownerDisplayName;
+  const canvasDimension = (body as { canvasDimension?: unknown }).canvasDimension;
   if (typeof name !== 'string' || !isValidRoomName(name)) {
     return null;
   }
   if (typeof ownerDisplayName !== 'string' || !isValidRoomDisplayName(ownerDisplayName)) {
     return null;
   }
+  if (canvasDimension !== undefined && (typeof canvasDimension !== 'number' || !isValidRoomCanvasDimension(canvasDimension))) {
+    return null;
+  }
 
-  return { name: name.trim(), ownerDisplayName: ownerDisplayName.trim() };
+  return {
+    name: name.trim(),
+    ownerDisplayName: ownerDisplayName.trim(),
+    canvasDimension: canvasDimension ?? FRIEND_ROOM_DEFAULT_CANVAS_DIMENSION,
+  };
 }
 
 function parseOptionalDisplayNameBody(
@@ -117,6 +126,17 @@ function parseQuickPixelBody(body: unknown): QuickPixelRequestDto | null {
   if (payload.suggestedColorHex !== undefined && typeof payload.suggestedColorHex !== 'string') {
     return null;
   }
+  if (payload.suggestedCoordinate !== undefined) {
+    const coordinate = payload.suggestedCoordinate;
+    if (
+      typeof coordinate !== 'object' ||
+      coordinate === null ||
+      !Number.isInteger((coordinate as { x?: unknown }).x) ||
+      !Number.isInteger((coordinate as { y?: unknown }).y)
+    ) {
+      return null;
+    }
+  }
   if (
     payload.displayName !== undefined &&
     (typeof payload.displayName !== 'string' || !isValidRoomDisplayName(payload.displayName))
@@ -129,6 +149,7 @@ function parseQuickPixelBody(body: unknown): QuickPixelRequestDto | null {
   return {
     ...(payload.inviteToken ? { inviteToken: payload.inviteToken } : {}),
     ...(normalizedInviteCode ? { inviteCode: normalizedInviteCode } : {}),
+    ...(payload.suggestedCoordinate ? { suggestedCoordinate: payload.suggestedCoordinate } : {}),
     ...(payload.suggestedColorHex ? { suggestedColorHex: payload.suggestedColorHex } : {}),
     ...(payload.displayName ? { displayName: payload.displayName.trim() } : {}),
   };
@@ -142,10 +163,10 @@ function sendQuickPixelRejection(reply: FastifyReply, error: QuickPixelRejectedE
   });
 }
 
-function quickPixelSuggestion(): InviteLandingResponseDto['quickPixelSuggestion'] {
+function quickPixelSuggestion(canvasSize: { width: number; height: number }): InviteLandingResponseDto['quickPixelSuggestion'] {
   return {
-    x: Math.floor(FRIEND_ROOM_CANVAS_SIZE.width / 2),
-    y: Math.floor(FRIEND_ROOM_CANVAS_SIZE.height / 2),
+    x: Math.floor(canvasSize.width / 2),
+    y: Math.floor(canvasSize.height / 2),
   };
 }
 
@@ -204,11 +225,11 @@ async function buildInviteLandingResponse(
     roomName: roomToday.room.name,
     todayDailyCanvasId: roomToday.dailyCanvas.id,
     canvasId: roomToday.canvas.id,
-    canvasSize: FRIEND_ROOM_CANVAS_SIZE,
+    canvasSize: { width: roomToday.canvas.width, height: roomToday.canvas.height },
     ...(ownerMember?.displayName ? { inviterDisplayName: ownerMember.displayName } : {}),
     ...(participantDisplayName ? { participantDisplayName } : {}),
     ...(suggestedParticipantDisplayName ? { suggestedParticipantDisplayName } : {}),
-    quickPixelSuggestion: quickPixelSuggestion(),
+    quickPixelSuggestion: quickPixelSuggestion(roomToday.canvas),
   };
 }
 
@@ -244,6 +265,7 @@ export async function registerRoomRoutes(app: FastifyInstance): Promise<void> {
         expectedParticipantCount: app.config.projectExpectedParticipants,
         targetCompletionMs: app.config.projectTargetCompletionMs,
         pixelAllowanceMaxStorageMs: app.config.pixelAllowanceMaxStorageMs,
+        ...(body.canvasDimension ? { canvasDimension: body.canvasDimension } : {}),
       });
       const inviteUrl = buildInviteUrl(
         app.config.webOrigin,
@@ -275,6 +297,7 @@ export async function registerRoomRoutes(app: FastifyInstance): Promise<void> {
         roomName: created.room.name,
         todayDailyCanvasId: created.dailyCanvas.id,
         canvasId: created.canvas.id,
+        canvasSize: { width: created.canvas.width, height: created.canvas.height },
         inviteUrl,
         inviteCode: created.invite.rawCode,
         ownerDisplayName: created.ownerMember.displayName ?? body.ownerDisplayName,
@@ -418,7 +441,6 @@ export async function registerRoomRoutes(app: FastifyInstance): Promise<void> {
     }
 
     const actorKey = getOrSetRoomActorKey(app, request, reply);
-    const suggestion = quickPixelSuggestion();
 
     try {
       const response = await placeQuickPixel({
@@ -432,7 +454,7 @@ export async function registerRoomRoutes(app: FastifyInstance): Promise<void> {
         inviteCode: body.inviteCode,
         displayName: body.displayName,
         suggestedColorHex: body.suggestedColorHex,
-        suggestedCoordinate: { x: suggestion.x, y: suggestion.y },
+        suggestedCoordinate: body.suggestedCoordinate,
         unlimitedPixelPlacement: app.config.unlimitedPixelPlacement,
       });
 
