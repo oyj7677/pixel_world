@@ -173,6 +173,7 @@ describe('room routes', () => {
       inviteUrl: expect.stringMatching(
         /^https:\/\/pixel-world\.test\/i\//,
       ),
+      inviteCode: expect.stringMatching(/^[A-Z0-9]{4}$/),
       ownerDisplayName: `${TEST_PREFIX} 방장`,
     });
     expect(body.inviteUrl).not.toContain('undefined');
@@ -195,6 +196,26 @@ describe('room routes', () => {
     expect(response.json()).toEqual({
       roomPublicId: body.roomPublicId,
       roomName: `${TEST_PREFIX} invite landing room`,
+      todayDailyCanvasId: body.todayDailyCanvasId,
+      canvasId: body.canvasId,
+      canvasSize: FRIEND_ROOM_CANVAS_SIZE,
+      inviterDisplayName: `${TEST_PREFIX} 방장`,
+      quickPixelSuggestion: { x: expect.any(Number), y: expect.any(Number) },
+    });
+  });
+
+  it('loads invite landing metadata with a 4-character room code', async () => {
+    const { body } = await createRoom(`${TEST_PREFIX} invite code landing room`);
+
+    const response = await app!.inject({
+      method: 'GET',
+      url: `/api/invite-codes/${body.inviteCode.toLowerCase()}/landing`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      roomPublicId: body.roomPublicId,
+      roomName: `${TEST_PREFIX} invite code landing room`,
       todayDailyCanvasId: body.todayDailyCanvasId,
       canvasId: body.canvasId,
       canvasSize: FRIEND_ROOM_CANVAS_SIZE,
@@ -290,6 +311,7 @@ describe('room routes', () => {
     expect(inviteBody).toEqual({
       roomPublicId: body.roomPublicId,
       inviteUrl: expect.stringMatching(/^https:\/\/pixel-world\.test\/i\//),
+      inviteCode: expect.stringMatching(/^[A-Z0-9]{4}$/),
     });
     expect(inviteBody.inviteUrl).not.toEqual(body.inviteUrl);
   });
@@ -339,6 +361,20 @@ describe('room routes', () => {
       canvasSize: FRIEND_ROOM_CANVAS_SIZE,
     });
 
+    const withInviteCode = await app!.inject({
+      method: 'GET',
+      url: `/api/rooms/${body.roomPublicId}/today?inviteCode=${body.inviteCode.toLowerCase()}`,
+      headers: { 'x-forwarded-for': '198.51.100.89' },
+    });
+    expect(withInviteCode.statusCode).toBe(200);
+    expect(withInviteCode.json()).toEqual({
+      roomPublicId: body.roomPublicId,
+      roomName: `${TEST_PREFIX} mobile cookie blocked room`,
+      todayDailyCanvasId: body.todayDailyCanvasId,
+      canvasId: body.canvasId,
+      canvasSize: FRIEND_ROOM_CANVAS_SIZE,
+    });
+
     const freshInvite = await app!.inject({
       method: 'POST',
       url: `/api/rooms/${body.roomPublicId}/invites?inviteToken=${encodeURIComponent(inviteToken)}`,
@@ -348,7 +384,56 @@ describe('room routes', () => {
     expect(freshInvite.json<CreateRoomInviteResponseDto>()).toEqual({
       roomPublicId: body.roomPublicId,
       inviteUrl: expect.stringMatching(/^https:\/\/pixel-world\.test\/i\//),
+      inviteCode: expect.stringMatching(/^[A-Z0-9]{4}$/),
     });
+  });
+
+  it('lets invitees place a Quick Pixel with a 4-character room code', async () => {
+    const { body } = await createRoom(`${TEST_PREFIX} quick pixel code room`);
+
+    const response = await app!.inject({
+      method: 'POST',
+      url: `/api/rooms/${body.roomPublicId}/quick-pixel`,
+      payload: { inviteCode: body.inviteCode.toLowerCase(), suggestedColorHex: '#22c55e', displayName: '코드손님' },
+      headers: { 'x-forwarded-for': '198.51.100.90' },
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json<QuickPixelResponseDto>()).toEqual(expect.objectContaining({
+      accepted: true,
+      roomPublicId: body.roomPublicId,
+      canvasId: body.canvasId,
+      colorHex: '#22C55E',
+    }));
+  });
+
+  it('rate-limits repeated invalid invite code landing attempts', async () => {
+    const rateLimitIp = `2001:db8::${(process.pid % 65535).toString(16)}`;
+
+    let response = await app!.inject({
+      method: 'GET',
+      url: '/api/invite-codes/ZZZZ/landing',
+      headers: { 'x-forwarded-for': rateLimitIp },
+    });
+
+    expect(response.statusCode).toBe(404);
+
+    for (let index = 1; index < 30; index += 1) {
+      response = await app!.inject({
+        method: 'GET',
+        url: '/api/invite-codes/ZZZZ/landing',
+        headers: { 'x-forwarded-for': rateLimitIp },
+      });
+      expect(response.statusCode).toBe(404);
+    }
+
+    response = await app!.inject({
+      method: 'GET',
+      url: '/api/invite-codes/ZZZZ/landing',
+      headers: { 'x-forwarded-for': rateLimitIp },
+    });
+    expect(response.statusCode).toBe(429);
+    expect(response.json()).toEqual({ error: 'invite_code_rate_limited' });
   });
 
   it('rejects invalid invite tokens without leaking private room details', async () => {

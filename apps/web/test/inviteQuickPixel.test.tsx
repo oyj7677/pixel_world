@@ -121,6 +121,26 @@ describe('InviteQuickPixel', () => {
     });
   });
 
+  it('places a Quick Pixel and opens the room with a 4-character invite code', async () => {
+    placeQuickPixelMock.mockResolvedValue(quickPixel);
+    render(createElement(InviteQuickPixel, { landing, inviteCode: 'AB12' }));
+
+    fireEvent.change(screen.getByLabelText('내 닉네임'), { target: { value: '코드손님' } });
+    fireEvent.click(screen.getByRole('button', { name: '퀵 픽셀 남기기' }));
+
+    await waitFor(() => {
+      expect(placeQuickPixelMock).toHaveBeenCalledWith('room_public_123', {
+        inviteCode: 'AB12',
+        suggestedColorHex: '#38BDF8',
+        displayName: '코드손님'
+      });
+    });
+    expect(screen.getByRole('link', { name: '방으로 들어가기' })).toHaveAttribute(
+      'href',
+      '/r/room_public_123?inviteCode=AB12'
+    );
+  });
+
   it('announces Quick Pixel loading and errors to assistive tech', async () => {
     placeQuickPixelMock.mockRejectedValue(new Error('expired'));
     render(createElement(InviteQuickPixel, { landing, inviteToken: 'invite-token-123' }));

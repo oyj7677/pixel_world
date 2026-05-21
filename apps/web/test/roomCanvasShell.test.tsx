@@ -11,7 +11,8 @@ import { createPixelSocket } from '../src/lib/socketClient';
 vi.mock('../src/lib/roomApi', () => ({
   createRoomInvite: vi.fn(async () => ({
     roomPublicId: 'room_public_123',
-    inviteUrl: 'http://localhost:3000/i/fresh-token'
+    inviteUrl: 'http://localhost:3000/i/fresh-token',
+    inviteCode: 'AB12'
   })),
   getRoomToday: vi.fn(async () => ({
     roomPublicId: 'room_public_123',
@@ -239,7 +240,8 @@ describe('RoomCanvasShell', () => {
     });
     vi.mocked(createRoomInvite).mockResolvedValueOnce({
       roomPublicId: 'room_public_123',
-      inviteUrl: 'http://localhost:3000/i/copied-token'
+      inviteUrl: 'http://localhost:3000/i/copied-token',
+      inviteCode: 'CD34'
     });
 
     render(createElement(RoomCanvasShell, { roomPublicId: 'room_public_123' }));
@@ -253,6 +255,7 @@ describe('RoomCanvasShell', () => {
     await waitFor(() => expect(createRoomInvite).toHaveBeenCalledWith('room_public_123', undefined));
     expect(writeText).toHaveBeenCalledWith('http://localhost:3000/i/copied-token');
     expect(screen.getByText('초대 주소를 복사했어요. 친구에게 바로 보내면 됩니다.')).toBeVisible();
+    expect(screen.getByText('CD34')).toBeVisible();
     expect(screen.getByRole('link', { name: 'http://localhost:3000/i/copied-token' })).toHaveAttribute(
       'href',
       'http://localhost:3000/i/copied-token'
@@ -264,7 +267,7 @@ describe('RoomCanvasShell', () => {
 
     await waitFor(() => expect(socketHandlers.has('connect')).toBe(true));
 
-    expect(vi.mocked(getRoomToday)).toHaveBeenCalledWith('room_public_123', 'invite-token-123');
+    expect(vi.mocked(getRoomToday)).toHaveBeenCalledWith('room_public_123', { inviteToken: 'invite-token-123' });
     expect(vi.mocked(createPixelSocket)).toHaveBeenCalledWith({
       roomPublicId: 'room_public_123',
       dailyCanvasId: 'daily-1',
@@ -276,6 +279,26 @@ describe('RoomCanvasShell', () => {
     emitSocket('canvasSnapshot', snapshot());
     await fireEvent.click(await screen.findByRole('button', { name: '초대 주소 복사' }));
 
-    await waitFor(() => expect(createRoomInvite).toHaveBeenCalledWith('room_public_123', 'invite-token-123'));
+    await waitFor(() => expect(createRoomInvite).toHaveBeenCalledWith('room_public_123', { inviteToken: 'invite-token-123' }));
+  });
+
+  it('keeps invite code access on mobile browsers that drop the API cookie', async () => {
+    render(createElement(RoomCanvasShell, { roomPublicId: 'room_public_123', inviteCode: 'AB12' }));
+
+    await waitFor(() => expect(socketHandlers.has('connect')).toBe(true));
+
+    expect(vi.mocked(getRoomToday)).toHaveBeenCalledWith('room_public_123', { inviteCode: 'AB12' });
+    expect(vi.mocked(createPixelSocket)).toHaveBeenCalledWith({
+      roomPublicId: 'room_public_123',
+      dailyCanvasId: 'daily-1',
+      date: 'today',
+      inviteCode: 'AB12'
+    });
+
+    emitSocket('connect', undefined);
+    emitSocket('canvasSnapshot', snapshot());
+    await fireEvent.click(await screen.findByRole('button', { name: '초대 주소 복사' }));
+
+    await waitFor(() => expect(createRoomInvite).toHaveBeenCalledWith('room_public_123', { inviteCode: 'AB12' }));
   });
 });

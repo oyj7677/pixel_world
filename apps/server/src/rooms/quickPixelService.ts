@@ -23,6 +23,7 @@ import {
   getActiveRoomMember,
   getRoomTodayIncludingArchived,
   validateInvite,
+  validateInviteByCode,
   type DailyCanvasRecord,
   type InviteRecord,
   type RoomMemberRecord,
@@ -60,6 +61,7 @@ export interface PlaceQuickPixelInput {
   actorKey: string;
   actorIpHash: string;
   inviteToken?: string | undefined;
+  inviteCode?: string | undefined;
   displayName?: string | undefined;
   suggestedCoordinate?: { x: number; y: number } | undefined;
   suggestedColorHex?: string | undefined;
@@ -198,6 +200,7 @@ async function getExistingMemberOrValidateInvite(input: {
   roomId: string;
   actorKey: string;
   inviteToken?: string | undefined;
+  inviteCode?: string | undefined;
   inviteSecret: string;
   displayName?: string | undefined;
 }): Promise<
@@ -218,13 +221,15 @@ async function getExistingMemberOrValidateInvite(input: {
     return { existingMember, invite: null, resolvedDisplayName };
   }
 
-  if (!input.inviteToken) {
-    throw new QuickPixelRejectedError('invalid_invite', 'Use a fresh invite link to place your first Quick Pixel.');
+  if (!input.inviteToken && !input.inviteCode) {
+    throw new QuickPixelRejectedError('invalid_invite', 'Use a fresh invite link or room code to place your first Quick Pixel.');
   }
 
-  const invite = await validateInvite(input.db, input.inviteToken, input.inviteSecret);
+  const invite = input.inviteToken
+    ? await validateInvite(input.db, input.inviteToken, input.inviteSecret)
+    : await validateInviteByCode(input.db, input.inviteCode!, input.inviteSecret);
   if (!invite || invite.roomId !== input.roomId) {
-    throw new QuickPixelRejectedError('invalid_invite', 'Use a fresh invite link to place your first Quick Pixel.');
+    throw new QuickPixelRejectedError('invalid_invite', 'Use a fresh invite link or room code to place your first Quick Pixel.');
   }
 
   const resolvedDisplayName = requestedDisplayName;
@@ -367,6 +372,7 @@ export async function placeQuickPixel(input: PlaceQuickPixelInput): Promise<Quic
     roomId: roomToday.room.id,
     actorKey: input.actorKey,
     inviteToken: input.inviteToken,
+    inviteCode: input.inviteCode,
     inviteSecret: input.inviteSecret,
     displayName: input.displayName,
   });

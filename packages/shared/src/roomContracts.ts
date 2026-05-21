@@ -7,12 +7,21 @@ export const FRIEND_ROOM_DEFAULT_TARGET_COMPLETION_MS = 6 * 60 * 60 * 1000;
 export const FRIEND_ROOM_MAX_TARGET_COMPLETION_MS = 24 * 60 * 60 * 1000 - 1;
 export const FRIEND_ROOM_MAX_NAME_LENGTH = 80;
 export const FRIEND_ROOM_MAX_DISPLAY_NAME_LENGTH = 40;
+export const FRIEND_ROOM_INVITE_CODE_LENGTH = 4;
 
 export const FRIEND_ROOM_ROUTES = {
   room: (publicId: string): string => `/r/${publicId}`,
   invite: (token: string): string => `/i/${token}`,
+  inviteCode: (code: string): string => `/c/${code}`,
   legacyInvite: (token: string): string => `/invite/${token}`
 } as const;
+
+const INVITE_CODE_PATTERN = /^[A-Z0-9]{4}$/;
+
+export function normalizeInviteCode(inviteCode: string): string | null {
+  const normalized = inviteCode.trim().toUpperCase().replaceAll(/[\s-]/g, '');
+  return INVITE_CODE_PATTERN.test(normalized) ? normalized : null;
+}
 
 export function isValidRoomName(name: string): boolean {
   const trimmedName = name.trim();
@@ -36,11 +45,13 @@ export interface CreateRoomResponseDto {
   todayDailyCanvasId: string;
   canvasId: string;
   inviteUrl: string;
+  inviteCode: string;
 }
 
 export interface CreateRoomInviteResponseDto {
   roomPublicId: string;
   inviteUrl: string;
+  inviteCode: string;
 }
 
 export interface QuickPixelSuggestionDto {
@@ -63,6 +74,7 @@ export interface InviteLandingResponseDto {
 
 export interface QuickPixelRequestDto {
   inviteToken?: string;
+  inviteCode?: string;
   suggestedColorHex?: HexColor;
   displayName?: string;
 }

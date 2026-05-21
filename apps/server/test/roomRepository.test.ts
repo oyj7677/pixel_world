@@ -13,7 +13,8 @@ import {
   ensureRoomMember,
   getRoomToday,
   revokeInvite,
-  validateInvite
+  validateInvite,
+  validateInviteByCode
 } from '../src/rooms/roomRepository';
 
 const INVITE_SECRET = 'room-repository-test-invite-secret';
@@ -116,9 +117,10 @@ describe('room repository', () => {
       expect.objectContaining({ roomId: created.room.id, actorKey: actorKey('owner'), role: 'owner', state: 'active' })
     );
     expect(created.invite).toEqual(
-      expect.objectContaining({ roomId: created.room.id, rawToken: expect.any(String), roleOnJoin: 'guest' })
+      expect.objectContaining({ roomId: created.room.id, rawToken: expect.any(String), rawCode: expect.any(String), roleOnJoin: 'guest' })
     );
     expect(created.invite.rawToken).toMatch(/^[A-Za-z0-9_-]{16}$/);
+    expect(created.invite.rawCode).toMatch(/^[A-Z0-9]{4}$/);
     expect(created.invite).not.toHaveProperty('codeHash');
     expect(created.dailyCanvas).toEqual(
       expect.objectContaining({ roomId: created.room.id, canvasId: created.canvas.id, status: 'active', width: 32, height: 32 })
@@ -139,7 +141,7 @@ describe('room repository', () => {
     expect(rowCounts.rows[0]).toEqual({ owner_members: 1, invites: 1, daily_canvases: 1, canvases: 1 });
   });
 
-  it('stores only invite token hash', async () => {
+  it('stores only invite token and short-code hashes', async () => {
     const created = await createRoomWithTodayCanvas(pool, {
       name: 'Room Repository Invite Hash Test',
       ownerActorKey: actorKey('hash-owner'),
@@ -147,11 +149,17 @@ describe('room repository', () => {
       inviteSecret: INVITE_SECRET
     });
 
-    const inviteRows = await pool.query('SELECT code_hash FROM room_invites WHERE id = $1', [created.invite.id]);
+    const inviteRows = await pool.query('SELECT code_hash, short_code_hash FROM room_invites WHERE id = $1', [created.invite.id]);
 
     expect(inviteRows.rows[0].code_hash).toHaveLength(64);
+    expect(inviteRows.rows[0].short_code_hash).toHaveLength(64);
     expect(inviteRows.rows[0].code_hash).not.toContain(created.invite.rawToken);
     expect(inviteRows.rows[0].code_hash).not.toBe(created.invite.rawToken);
+    expect(inviteRows.rows[0].short_code_hash).not.toContain(created.invite.rawCode);
+    expect(inviteRows.rows[0].short_code_hash).not.toBe(created.invite.rawCode);
+    await expect(validateInviteByCode(pool, created.invite.rawCode.toLowerCase(), INVITE_SECRET)).resolves.toEqual(
+      expect.objectContaining({ id: created.invite.id, roomId: created.room.id })
+    );
   });
 
   it('uses room timezone when creating today daily canvas', async () => {

@@ -4,14 +4,17 @@ import {
   FRIEND_ROOM_DEFAULT_TARGET_COMPLETION_MS,
   DEFAULT_PIXEL_ALLOWANCE_MAX_STORAGE_MS,
   calculateDynamicAllowanceIntervalMs,
-  calculateRequiredPixelCount
+  calculateRequiredPixelCount,
+  normalizeInviteCode
 } from '@pixel-world/shared';
 import type { DbClient } from '../db/index';
-import { generateInviteToken, hashInviteToken, verifyInviteToken } from './inviteTokens';
+import { generateInviteCode, generateInviteToken, hashInviteToken, verifyInviteToken } from './inviteTokens';
 
 type RoomRole = 'owner' | 'admin' | 'member' | 'guest';
 type RoomPrivacy = 'private' | 'unlisted';
 type DailyCanvasStatus = 'scheduled' | 'active' | 'sealed' | 'replay_ready';
+
+const MAX_INVITE_CREDENTIAL_ATTEMPTS = 12;
 
 export interface RoomRecord {
   id: string;
@@ -59,6 +62,7 @@ export interface InviteRecord {
 
 export interface CreatedInvite extends InviteRecord {
   rawToken: string;
+  rawCode: string;
 }
 
 export interface CanvasRecord {
@@ -291,6 +295,48 @@ function generatePublicId(prefix?: string): string {
   return prefix ? `${prefix}-${suffix}` : `room_${suffix}`;
 }
 
+async function insertInviteWithGeneratedCredentials(
+  db: DbClient,
+  input: {
+    roomId: string;
+    createdByMemberId: string;
+    inviteSecret: string;
+    roleOnJoin?: RoomRole;
+    maxUses?: number | null;
+    expiresAt?: Date | null;
+  },
+): Promise<CreatedInvite> {
+  for (let attempt = 0; attempt < MAX_INVITE_CREDENTIAL_ATTEMPTS; attempt += 1) {
+    const rawToken = generateInviteToken();
+    const rawCode = generateInviteCode();
+    const codeHash = hashInviteToken(rawToken, input.inviteSecret);
+    const shortCodeHash = hashInviteToken(rawCode, input.inviteSecret);
+    const result = await db.query<InviteRow>(
+      `INSERT INTO room_invites (room_id, code_hash, short_code_hash, created_by_member_id, role_on_join, max_uses, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       ON CONFLICT DO NOTHING
+       RETURNING id, room_id, created_by_member_id, role_on_join, max_uses, use_count,
+                 expires_at, revoked_at, created_at`,
+      [
+        input.roomId,
+        codeHash,
+        shortCodeHash,
+        input.createdByMemberId,
+        input.roleOnJoin ?? 'guest',
+        input.maxUses ?? null,
+        input.expiresAt ?? null,
+      ],
+    );
+
+    const row = result.rows[0];
+    if (row) {
+      return { ...mapInvite(row), rawToken, rawCode };
+    }
+  }
+
+  throw new Error('Failed to generate a unique room invite code.');
+}
+
 function formatDateParts(year: number, month: number, day: number): string {
   return `${year.toString().padStart(4, '0')}-${month.toString().padStart(2, '0')}-${day
     .toString()
@@ -438,16 +484,11 @@ export async function createRoomWithTodayCanvas(
 
     const { canvas, dailyCanvas } = await createOrGetDailyCanvasForRoom(client as DbClient, room, canvasDate);
 
-    const rawToken = generateInviteToken();
-    const codeHash = hashInviteToken(rawToken, input.inviteSecret);
-    const inviteResult = await client.query<InviteRow>(
-      `INSERT INTO room_invites (room_id, code_hash, created_by_member_id, role_on_join)
-       VALUES ($1, $2, $3, 'guest')
-       RETURNING id, room_id, created_by_member_id, role_on_join, max_uses, use_count,
-                 expires_at, revoked_at, created_at`,
-      [room.id, codeHash, ownerMember.id]
-    );
-    const invite = { ...mapInvite(inviteResult.rows[0]!), rawToken };
+    const invite = await insertInviteWithGeneratedCredentials(client as DbClient, {
+      roomId: room.id,
+      createdByMemberId: ownerMember.id,
+      inviteSecret: input.inviteSecret,
+    });
 
     await client.query('COMMIT');
     return { room, ownerMember, invite, canvas, dailyCanvas };
@@ -662,16 +703,7 @@ export async function getRoomTodayIncludingArchived(db: DbClient, publicId: stri
 }
 
 export async function createInvite(db: DbClient, input: CreateInviteInput): Promise<CreatedInvite> {
-  const rawToken = generateInviteToken();
-  const codeHash = hashInviteToken(rawToken, input.inviteSecret);
-  const result = await db.query<InviteRow>(
-    `INSERT INTO room_invites (room_id, code_hash, created_by_member_id, role_on_join, max_uses, expires_at)
-     VALUES ($1, $2, $3, $4, $5, $6)
-     RETURNING id, room_id, created_by_member_id, role_on_join, max_uses, use_count,
-               expires_at, revoked_at, created_at`,
-    [input.roomId, codeHash, input.createdByMemberId, input.roleOnJoin ?? 'guest', input.maxUses ?? null, input.expiresAt ?? null]
-  );
-  return { ...mapInvite(result.rows[0]!), rawToken };
+  return insertInviteWithGeneratedCredentials(db, input);
 }
 
 export async function validateInvite(db: DbClient, rawToken: string, inviteSecret: string): Promise<InviteRecord | null> {
@@ -688,6 +720,30 @@ export async function validateInvite(db: DbClient, rawToken: string, inviteSecre
   );
   const invite = result.rows[0];
   if (!invite || !verifyInviteToken(rawToken, invite.code_hash, inviteSecret)) {
+    return null;
+  }
+  return mapInvite(invite);
+}
+
+export async function validateInviteByCode(db: DbClient, rawCode: string, inviteSecret: string): Promise<InviteRecord | null> {
+  const normalizedCode = normalizeInviteCode(rawCode);
+  if (!normalizedCode) {
+    return null;
+  }
+
+  const candidateHash = hashInviteToken(normalizedCode, inviteSecret);
+  const result = await db.query<InviteRow & { short_code_hash: string }>(
+    `SELECT id, room_id, short_code_hash, created_by_member_id, role_on_join, max_uses, use_count,
+            expires_at, revoked_at, created_at
+     FROM room_invites
+     WHERE short_code_hash = $1
+       AND revoked_at IS NULL
+       AND (expires_at IS NULL OR expires_at > now())
+       AND (max_uses IS NULL OR use_count < max_uses)`,
+    [candidateHash]
+  );
+  const invite = result.rows[0];
+  if (!invite || !verifyInviteToken(normalizedCode, invite.short_code_hash, inviteSecret)) {
     return null;
   }
   return mapInvite(invite);

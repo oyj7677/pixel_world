@@ -11,6 +11,8 @@ describe('HomePage landing', () => {
   it('focuses the first screen on host nickname, room name, invite link creation, and a lower ad slot', () => {
     render(createElement(HomePage));
 
+    expect(screen.getByLabelText('입장 코드')).toBeVisible();
+    expect(screen.getByRole('button', { name: '코드로 입장' })).toBeVisible();
     expect(screen.getByLabelText('방장 닉네임')).toBeVisible();
     expect(screen.getByLabelText('방 이름')).toBeVisible();
     expect(screen.getByRole('button', { name: '초대 링크 만들기' })).toBeVisible();

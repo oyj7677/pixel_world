@@ -7,10 +7,11 @@ import { placeQuickPixel } from '../lib/roomApi';
 
 interface InviteQuickPixelProps {
   landing: InviteLandingResponseDto | null;
-  inviteToken: string;
+  inviteToken?: string | undefined;
+  inviteCode?: string | undefined;
 }
 
-export function InviteQuickPixel({ landing, inviteToken }: InviteQuickPixelProps) {
+export function InviteQuickPixel({ landing, inviteToken, inviteCode }: InviteQuickPixelProps) {
   const [displayName, setDisplayName] = useState('');
   const [quickPixel, setQuickPixel] = useState<QuickPixelResponseDto | null>(null);
   const [isPlacing, setIsPlacing] = useState(false);
@@ -35,7 +36,15 @@ export function InviteQuickPixel({ landing, inviteToken }: InviteQuickPixelProps
   const quickPixelPreviewStyle = { '--quick-pixel-color': suggestedColor } as CSSProperties;
   const participantDisplayName = landing.participantDisplayName?.trim() ?? '';
   const needsDisplayName = !participantDisplayName;
-  const roomHref = `/r/${encodeURIComponent(landing.roomPublicId)}?inviteToken=${encodeURIComponent(inviteToken)}`;
+  const roomParams = new URLSearchParams();
+  if (inviteToken) {
+    roomParams.set('inviteToken', inviteToken);
+  } else if (inviteCode) {
+    roomParams.set('inviteCode', inviteCode);
+  }
+  const roomQuery = roomParams.toString();
+  const roomHref = `/r/${encodeURIComponent(landing.roomPublicId)}${roomQuery ? `?${roomQuery}` : ''}`;
+  const inviteCredential = inviteToken ? { inviteToken } : inviteCode ? { inviteCode } : {};
   const suggestedParticipantDisplayName = needsDisplayName
     ? landing.suggestedParticipantDisplayName?.trim() ?? ''
     : '';
@@ -57,13 +66,13 @@ export function InviteQuickPixel({ landing, inviteToken }: InviteQuickPixelProps
 
     try {
       const placed = await placeQuickPixel(landing.roomPublicId, {
-        inviteToken,
+        ...inviteCredential,
         suggestedColorHex: suggestedColor,
         ...(needsDisplayName ? { displayName: trimmedDisplayName } : {})
       });
       setQuickPixel(placed);
     } catch {
-      setError('이 초대로는 픽셀을 남길 수 없습니다. 새 링크를 받아 다시 시도해 주세요.');
+      setError('이 초대로는 픽셀을 남길 수 없습니다. 새 링크나 코드를 받아 다시 시도해 주세요.');
     } finally {
       setIsPlacing(false);
     }

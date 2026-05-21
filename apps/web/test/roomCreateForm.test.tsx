@@ -41,6 +41,7 @@ describe('RoomCreateForm', () => {
       todayDailyCanvasId: 'daily_123',
       canvasId: 'room_canvas_123',
       inviteUrl: 'https://pixel-world.test/i/invite-token-123',
+      inviteCode: 'AB12',
       ownerDisplayName: '민아'
     });
 
@@ -56,6 +57,7 @@ describe('RoomCreateForm', () => {
     expect(createRoomMock).toHaveBeenCalledTimes(1);
     expect(screen.getByText('금요일 친구들')).toBeVisible();
     expect(screen.getByText('방장 민아')).toBeVisible();
+    expect(screen.getByText('AB12')).toBeVisible();
     expect(screen.getByRole('link', { name: 'https://pixel-world.test/i/invite-token-123' })).toHaveAttribute(
       'href',
       'https://pixel-world.test/i/invite-token-123'

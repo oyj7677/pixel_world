@@ -19,12 +19,23 @@ import { CanvasBoard } from './CanvasBoard';
 import { ColorTools } from './ColorTools';
 import { RecentEvents } from './RecentEvents';
 import { StatusBar } from './StatusBar';
-import { createRoomInvite, getRoomToday, type RoomTodayResponseDto } from '../lib/roomApi';
+import { createRoomInvite, getRoomToday, type InviteCredential, type RoomTodayResponseDto } from '../lib/roomApi';
 import { createPixelSocket, type PixelSocket } from '../lib/socketClient';
 
 interface RoomCanvasShellProps {
   roomPublicId: string;
   inviteToken?: string | undefined;
+  inviteCode?: string | undefined;
+}
+
+function buildInviteCredential(inviteToken?: string, inviteCode?: string): InviteCredential | undefined {
+  if (inviteToken) {
+    return { inviteToken };
+  }
+  if (inviteCode) {
+    return { inviteCode };
+  }
+  return undefined;
 }
 
 function deadlineFromTimestamp(timestamp: unknown) {
@@ -96,7 +107,7 @@ function isForRoom(today: RoomTodayResponseDto | null, payload: { roomPublicId?:
   );
 }
 
-export function RoomCanvasShell({ roomPublicId, inviteToken }: RoomCanvasShellProps) {
+export function RoomCanvasShell({ roomPublicId, inviteToken, inviteCode }: RoomCanvasShellProps) {
   const [today, setToday] = useState<RoomTodayResponseDto | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [selectedColor, setSelectedColor] = useState<HexColor>(DEFAULT_PALETTE[9]!);
@@ -114,6 +125,7 @@ export function RoomCanvasShell({ roomPublicId, inviteToken }: RoomCanvasShellPr
   const [canvasHeight, setCanvasHeight] = useState(0);
   const [defaultColorHex, setDefaultColorHex] = useState<HexColor>(DEFAULT_CANVAS_COLOR);
   const [inviteUrl, setInviteUrl] = useState('');
+  const [generatedInviteCode, setGeneratedInviteCode] = useState('');
   const [inviteShareMessage, setInviteShareMessage] = useState<string | null>(null);
   const [inviteShareError, setInviteShareError] = useState<string | null>(null);
   const [isCreatingInvite, setIsCreatingInvite] = useState(false);
@@ -133,7 +145,9 @@ export function RoomCanvasShell({ roomPublicId, inviteToken }: RoomCanvasShellPr
     let cancelled = false;
     let socket: PixelSocket | null = null;
 
-    void getRoomToday(roomPublicId, inviteToken)
+    const inviteCredential = buildInviteCredential(inviteToken, inviteCode);
+
+    void getRoomToday(roomPublicId, inviteCredential)
       .then((roomToday) => {
         if (cancelled) {
           return;
@@ -152,7 +166,7 @@ export function RoomCanvasShell({ roomPublicId, inviteToken }: RoomCanvasShellPr
           roomPublicId: roomToday.roomPublicId,
           dailyCanvasId: roomToday.todayDailyCanvasId,
           date: 'today',
-          inviteToken
+          ...inviteCredential
         });
         socketRef.current = socket;
 
@@ -227,7 +241,7 @@ export function RoomCanvasShell({ roomPublicId, inviteToken }: RoomCanvasShellPr
       socketRef.current = null;
       socket?.disconnect();
     };
-  }, [inviteToken, roomPublicId]);
+  }, [inviteCode, inviteToken, roomPublicId]);
 
   useEffect(() => {
     if (cooldownDeadlineMs === null) {
@@ -281,8 +295,9 @@ export function RoomCanvasShell({ roomPublicId, inviteToken }: RoomCanvasShellPr
     setInviteShareError(null);
 
     try {
-      const response = await createRoomInvite(roomPublicId, inviteToken);
+      const response = await createRoomInvite(roomPublicId, buildInviteCredential(inviteToken, inviteCode));
       setInviteUrl(response.inviteUrl);
+      setGeneratedInviteCode(response.inviteCode);
 
       try {
         if (navigator.clipboard?.writeText) {
@@ -299,7 +314,7 @@ export function RoomCanvasShell({ roomPublicId, inviteToken }: RoomCanvasShellPr
     } finally {
       setIsCreatingInvite(false);
     }
-  }, [inviteToken, isCreatingInvite, roomPublicId]);
+  }, [inviteCode, inviteToken, isCreatingInvite, roomPublicId]);
 
   if (notFound) {
     return (
@@ -340,6 +355,11 @@ export function RoomCanvasShell({ roomPublicId, inviteToken }: RoomCanvasShellPr
           {inviteShareError ? (
             <p className="form-message form-message--error" role="alert">
               {inviteShareError}
+            </p>
+          ) : null}
+          {generatedInviteCode ? (
+            <p className="room-invite-code">
+              입장 코드 <strong>{generatedInviteCode}</strong>
             </p>
           ) : null}
           {inviteUrl ? <a href={inviteUrl}>{inviteUrl}</a> : null}

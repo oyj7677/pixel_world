@@ -50,6 +50,7 @@ import {
   getActiveRoomMember,
   getRoomTodayIncludingArchived,
   validateInvite,
+  validateInviteByCode,
   type DailyCanvasRecord
 } from '../rooms/roomRepository';
 import type { CookieSameSite } from '../config';
@@ -308,7 +309,12 @@ async function resolveSocketContext(
   const member = await getActiveRoomMember(app.db, roomToday.room.id, actorKey);
   if (!member) {
     const inviteToken = getQueryString(socket.handshake.query.inviteToken);
-    const invite = inviteToken ? await validateInvite(app.db, inviteToken, app.config.cookieSecret) : null;
+    const inviteCode = getQueryString(socket.handshake.query.inviteCode);
+    const invite = inviteToken
+      ? await validateInvite(app.db, inviteToken, app.config.cookieSecret)
+      : inviteCode
+        ? await validateInviteByCode(app.db, inviteCode, app.config.cookieSecret)
+        : null;
     if (!invite || invite.roomId !== roomToday.room.id) {
       throw new Error('room_join_rejected');
     }

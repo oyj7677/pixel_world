@@ -92,6 +92,10 @@ export function RoomCreateForm() {
           <p>초대 준비 완료</p>
           <strong>{createdRoom.roomName}</strong>
           {createdOwnerName ? <span>방장 {createdOwnerName}</span> : null}
+          <div className="invite-code-card" aria-label="4자리 입장 코드">
+            <span>입장 코드</span>
+            <strong>{createdRoom.inviteCode}</strong>
+          </div>
           <a href={createdRoom.inviteUrl}>{createdRoom.inviteUrl}</a>
           <a className="secondary-link" href={`/r/${createdRoom.roomPublicId}`}>
             방 열기

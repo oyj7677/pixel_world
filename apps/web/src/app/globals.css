@@ -102,6 +102,17 @@ select {
   overflow-wrap: anywhere;
 }
 
+.room-invite-code {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.room-invite-code strong {
+  color: var(--accent);
+  letter-spacing: 0.16em;
+}
+
 .app-nav {
   display: flex;
   flex-wrap: wrap;
@@ -538,6 +549,7 @@ select {
 }
 
 .friend-room-panel,
+.room-code-panel,
 .invite-card,
 .optional-name-card,
 .legacy-global-callout {
@@ -546,6 +558,7 @@ select {
 }
 
 .friend-room-panel h1,
+.room-code-panel h1,
 .invite-card h1 {
   margin: 0;
   color: var(--accent);
@@ -571,7 +584,8 @@ select {
   line-height: 1.55;
 }
 
-.room-create-form {
+.room-create-form,
+.room-code-form {
   display: grid;
   gap: 12px;
   max-width: 640px;
@@ -595,6 +609,17 @@ select {
   color: var(--text);
   padding: 12px 14px;
   text-transform: none;
+}
+
+.room-code-form {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+}
+
+.room-code-input {
+  letter-spacing: 0.22em;
+  text-align: center;
+  text-transform: uppercase;
 }
 
 .primary-action,
@@ -647,6 +672,31 @@ select {
 .invite-result a:not(.secondary-link) {
   color: var(--accent);
   overflow-wrap: anywhere;
+}
+
+.invite-code-card {
+  display: grid;
+  width: fit-content;
+  min-width: 144px;
+  gap: 2px;
+  border: 1px solid rgba(125, 211, 252, 0.48);
+  border-radius: 14px;
+  background: rgba(56, 189, 248, 0.1);
+  padding: 10px 14px;
+}
+
+.invite-code-card span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.invite-code-card strong {
+  color: var(--accent);
+  font-size: 1.8rem;
+  letter-spacing: 0.18em;
 }
 
 .form-message {
@@ -795,9 +845,14 @@ select {
   .side-stack,
   .home-room-first,
   .room-create-form,
+  .room-code-form,
   .quick-pixel-start,
   .quick-pixel-success {
     width: 100%;
+  }
+
+  .room-code-form {
+    grid-template-columns: 1fr;
   }
 
   .canvas-placeholder {
@@ -854,6 +909,7 @@ select {
   }
 
   .friend-room-panel h1,
+  .room-code-panel h1,
   .invite-card h1 {
     font-size: clamp(2rem, 13vw, 3.1rem);
     line-height: 1.04;

@@ -10,6 +10,7 @@ import {
   type QuickPixelRequestDto,
   isValidRoomDisplayName,
   isValidRoomName,
+  normalizeInviteCode,
 } from '@pixel-world/shared';
 import type { FastifyInstance, FastifyReply } from 'fastify';
 import { getOrSetActorKey, getRequestIp, hashIpAddress } from '../auth/actorIdentity';
@@ -23,6 +24,8 @@ import {
   getRecentInviteMemberByIpHash,
   updateRoomMemberDisplayName,
   validateInvite,
+  validateInviteByCode,
+  type InviteRecord,
 } from './roomRepository';
 import { RedisPixelAllowanceStore } from '../services/pixelAllowanceService';
 import { placeQuickPixel, QuickPixelRejectedError } from './quickPixelService';
@@ -30,6 +33,8 @@ import { recordRoomAnalyticsEvent } from './roomAnalytics';
 
 const MAX_DISPLAY_NAME_LENGTH = 40;
 const INVITE_ROUTE_TEMPLATE = '/i/:token';
+const INVITE_CODE_LANDING_ATTEMPT_LIMIT = 30;
+const INVITE_CODE_LANDING_WINDOW_MS = 5 * 60 * 1000;
 
 function inviteSecret(app: FastifyInstance): string {
   return app.config.cookieSecret;
@@ -44,6 +49,10 @@ function getOrSetRoomActorKey(app: FastifyInstance, request: Parameters<typeof g
 
 function sendInvalidInvite(reply: FastifyReply) {
   return reply.code(404).send({ error: 'invalid_invite' });
+}
+
+function sendInviteCodeRateLimit(reply: FastifyReply) {
+  return reply.code(429).send({ error: 'invite_code_rate_limited' });
 }
 
 function buildInviteUrl(webOrigin: string, rawInviteToken: string): string {
@@ -102,6 +111,9 @@ function parseQuickPixelBody(body: unknown): QuickPixelRequestDto | null {
   if (payload.inviteToken !== undefined && typeof payload.inviteToken !== 'string') {
     return null;
   }
+  if (payload.inviteCode !== undefined && typeof payload.inviteCode !== 'string') {
+    return null;
+  }
   if (payload.suggestedColorHex !== undefined && typeof payload.suggestedColorHex !== 'string') {
     return null;
   }
@@ -112,8 +124,11 @@ function parseQuickPixelBody(body: unknown): QuickPixelRequestDto | null {
     return null;
   }
 
+  const normalizedInviteCode = payload.inviteCode ? normalizeInviteCode(payload.inviteCode) : null;
+
   return {
     ...(payload.inviteToken ? { inviteToken: payload.inviteToken } : {}),
+    ...(normalizedInviteCode ? { inviteCode: normalizedInviteCode } : {}),
     ...(payload.suggestedColorHex ? { suggestedColorHex: payload.suggestedColorHex } : {}),
     ...(payload.displayName ? { displayName: payload.displayName.trim() } : {}),
   };
@@ -134,19 +149,22 @@ function quickPixelSuggestion(): InviteLandingResponseDto['quickPixelSuggestion'
   };
 }
 
-async function ensureMemberFromInviteToken(
+async function ensureMemberFromInviteCredential(
   app: FastifyInstance,
   input: {
     roomId: string;
     actorKey: string;
     inviteToken?: string | undefined;
+    inviteCode?: string | undefined;
   },
 ) {
-  if (!input.inviteToken) {
+  if (!input.inviteToken && !input.inviteCode) {
     return null;
   }
 
-  const invite = await validateInvite(app.db, input.inviteToken, inviteSecret(app));
+  const invite = input.inviteToken
+    ? await validateInvite(app.db, input.inviteToken, inviteSecret(app))
+    : await validateInviteByCode(app.db, input.inviteCode!, inviteSecret(app));
   if (!invite || invite.roomId !== input.roomId) {
     return null;
   }
@@ -158,6 +176,54 @@ async function ensureMemberFromInviteToken(
     inviteId: invite.id,
     displayName: null,
   });
+}
+
+async function buildInviteLandingResponse(
+  app: FastifyInstance,
+  request: Parameters<typeof getOrSetActorKey>[0],
+  reply: FastifyReply,
+  invite: InviteRecord,
+): Promise<InviteLandingResponseDto | null> {
+  const roomToday = await ensureRoomTodayById(app.db, invite.roomId);
+  if (!roomToday) {
+    return null;
+  }
+
+  const actorKey = getOrSetRoomActorKey(app, request, reply);
+  const actorIpHash = hashIpAddress(getRequestIp(request), app.config.ipHashSecret);
+  const ownerMember = await getActiveRoomMember(app.db, roomToday.room.id, roomToday.room.ownerActorKey);
+  const currentMember = await getActiveRoomMember(app.db, roomToday.room.id, actorKey);
+  const participantDisplayName = currentMember?.displayName ?? null;
+  const suggestedInviteMember = participantDisplayName
+    ? null
+    : await getRecentInviteMemberByIpHash(app.db, invite.id, actorIpHash);
+  const suggestedParticipantDisplayName = suggestedInviteMember?.displayName ?? null;
+
+  return {
+    roomPublicId: roomToday.room.publicId,
+    roomName: roomToday.room.name,
+    todayDailyCanvasId: roomToday.dailyCanvas.id,
+    canvasId: roomToday.canvas.id,
+    canvasSize: FRIEND_ROOM_CANVAS_SIZE,
+    ...(ownerMember?.displayName ? { inviterDisplayName: ownerMember.displayName } : {}),
+    ...(participantDisplayName ? { participantDisplayName } : {}),
+    ...(suggestedParticipantDisplayName ? { suggestedParticipantDisplayName } : {}),
+    quickPixelSuggestion: quickPixelSuggestion(),
+  };
+}
+
+async function consumeInviteCodeLandingAttempt(
+  app: FastifyInstance,
+  request: Parameters<typeof getOrSetActorKey>[0],
+): Promise<boolean> {
+  const actorIpHash = hashIpAddress(getRequestIp(request), app.config.ipHashSecret);
+  const key = `room:invite-code-landing-attempt:${actorIpHash}`;
+  const attemptCount = await app.redis.incr(key);
+  if (attemptCount === 1) {
+    await app.redis.pexpire(key, INVITE_CODE_LANDING_WINDOW_MS);
+  }
+
+  return attemptCount <= INVITE_CODE_LANDING_ATTEMPT_LIMIT;
 }
 
 export async function registerRoomRoutes(app: FastifyInstance): Promise<void> {
@@ -210,6 +276,7 @@ export async function registerRoomRoutes(app: FastifyInstance): Promise<void> {
         todayDailyCanvasId: created.dailyCanvas.id,
         canvasId: created.canvas.id,
         inviteUrl,
+        inviteCode: created.invite.rawCode,
         ownerDisplayName: created.ownerMember.displayName ?? body.ownerDisplayName,
       };
 
@@ -218,7 +285,7 @@ export async function registerRoomRoutes(app: FastifyInstance): Promise<void> {
   );
 
 
-  app.get<{ Params: { roomPublicId: string }; Querystring: { inviteToken?: string } }>(
+  app.get<{ Params: { roomPublicId: string }; Querystring: { inviteToken?: string; inviteCode?: string } }>(
     '/api/rooms/:roomPublicId/today',
     async (request, reply) => {
       const roomToday = await ensureRoomToday(app.db, request.params.roomPublicId);
@@ -228,10 +295,11 @@ export async function registerRoomRoutes(app: FastifyInstance): Promise<void> {
 
       const actorKey = getOrSetRoomActorKey(app, request, reply);
       const member = await getActiveRoomMember(app.db, roomToday.room.id, actorKey)
-        ?? await ensureMemberFromInviteToken(app, {
+        ?? await ensureMemberFromInviteCredential(app, {
           roomId: roomToday.room.id,
           actorKey,
           inviteToken: request.query.inviteToken,
+          inviteCode: request.query.inviteCode,
         });
       if (!member) {
         return reply.code(404).send({ error: 'room_membership_required' });
@@ -247,7 +315,7 @@ export async function registerRoomRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
-  app.post<{ Params: { roomPublicId: string }; Querystring: { inviteToken?: string } }>(
+  app.post<{ Params: { roomPublicId: string }; Querystring: { inviteToken?: string; inviteCode?: string } }>(
     '/api/rooms/:roomPublicId/invites',
     async (request, reply) => {
       const roomToday = await ensureRoomToday(app.db, request.params.roomPublicId);
@@ -257,10 +325,11 @@ export async function registerRoomRoutes(app: FastifyInstance): Promise<void> {
 
       const actorKey = getOrSetRoomActorKey(app, request, reply);
       const member = await getActiveRoomMember(app.db, roomToday.room.id, actorKey)
-        ?? await ensureMemberFromInviteToken(app, {
+        ?? await ensureMemberFromInviteCredential(app, {
           roomId: roomToday.room.id,
           actorKey,
           inviteToken: request.query.inviteToken,
+          inviteCode: request.query.inviteCode,
         });
       if (!member) {
         return reply.code(404).send({ error: 'room_membership_required' });
@@ -286,6 +355,7 @@ export async function registerRoomRoutes(app: FastifyInstance): Promise<void> {
       const response: CreateRoomInviteResponseDto = {
         roomPublicId: roomToday.room.publicId,
         inviteUrl,
+        inviteCode: invite.rawCode,
       };
 
       return reply.code(201).send(response);
@@ -304,32 +374,35 @@ export async function registerRoomRoutes(app: FastifyInstance): Promise<void> {
         return sendInvalidInvite(reply);
       }
 
-      const roomToday = await ensureRoomTodayById(app.db, invite.roomId);
-      if (!roomToday) {
+      const response = await buildInviteLandingResponse(app, request, reply, invite);
+      if (!response) {
         return sendInvalidInvite(reply);
       }
 
-      const actorKey = getOrSetRoomActorKey(app, request, reply);
-      const actorIpHash = hashIpAddress(getRequestIp(request), app.config.ipHashSecret);
-      const ownerMember = await getActiveRoomMember(app.db, roomToday.room.id, roomToday.room.ownerActorKey);
-      const currentMember = await getActiveRoomMember(app.db, roomToday.room.id, actorKey);
-      const participantDisplayName = currentMember?.displayName ?? null;
-      const suggestedInviteMember = participantDisplayName
-        ? null
-        : await getRecentInviteMemberByIpHash(app.db, invite.id, actorIpHash);
-      const suggestedParticipantDisplayName = suggestedInviteMember?.displayName ?? null;
+      return response;
+    },
+  );
 
-      const response: InviteLandingResponseDto = {
-        roomPublicId: roomToday.room.publicId,
-        roomName: roomToday.room.name,
-        todayDailyCanvasId: roomToday.dailyCanvas.id,
-        canvasId: roomToday.canvas.id,
-        canvasSize: FRIEND_ROOM_CANVAS_SIZE,
-        ...(ownerMember?.displayName ? { inviterDisplayName: ownerMember.displayName } : {}),
-        ...(participantDisplayName ? { participantDisplayName } : {}),
-        ...(suggestedParticipantDisplayName ? { suggestedParticipantDisplayName } : {}),
-        quickPixelSuggestion: quickPixelSuggestion(),
-      };
+  app.get<{ Params: { inviteCode: string } }>(
+    '/api/invite-codes/:inviteCode/landing',
+    async (request, reply) => {
+      if (!(await consumeInviteCodeLandingAttempt(app, request))) {
+        return sendInviteCodeRateLimit(reply);
+      }
+
+      const invite = await validateInviteByCode(
+        app.db,
+        request.params.inviteCode,
+        inviteSecret(app),
+      );
+      if (!invite) {
+        return sendInvalidInvite(reply);
+      }
+
+      const response = await buildInviteLandingResponse(app, request, reply, invite);
+      if (!response) {
+        return sendInvalidInvite(reply);
+      }
 
       return response;
     },
@@ -356,6 +429,7 @@ export async function registerRoomRoutes(app: FastifyInstance): Promise<void> {
         actorKey,
         actorIpHash: hashIpAddress(getRequestIp(request), app.config.ipHashSecret),
         inviteToken: body.inviteToken,
+        inviteCode: body.inviteCode,
         displayName: body.displayName,
         suggestedColorHex: body.suggestedColorHex,
         suggestedCoordinate: { x: suggestion.x, y: suggestion.y },

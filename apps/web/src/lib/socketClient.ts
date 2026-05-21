@@ -8,6 +8,7 @@ export interface PixelSocketOptions {
   dailyCanvasId?: string;
   date?: 'today';
   inviteToken?: string | undefined;
+  inviteCode?: string | undefined;
 }
 
 export function createPixelSocket(options: PixelSocketOptions = {}) {
