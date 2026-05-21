@@ -696,6 +696,7 @@ body:has(.room-shell) > .feedback-entry {
 }
 
 .friend-room-panel,
+.public-room-panel,
 .room-code-panel,
 .invite-card,
 .optional-name-card,
@@ -705,6 +706,7 @@ body:has(.room-shell) > .feedback-entry {
 }
 
 .friend-room-panel h1,
+.public-room-panel h1,
 .room-code-panel h1,
 .invite-card h1 {
   margin: 0;
@@ -729,6 +731,44 @@ body:has(.room-shell) > .feedback-entry {
   margin: 0;
   color: var(--muted);
   line-height: 1.55;
+}
+
+
+.public-room-panel {
+  border-color: rgba(249, 168, 212, 0.5);
+  background: linear-gradient(135deg, rgba(31, 41, 55, 0.92), rgba(14, 116, 144, 0.38));
+}
+
+.public-room-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.public-room-entry {
+  min-height: 50px;
+  padding: 0 22px;
+}
+
+.public-room-code {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  border: 1px solid rgba(125, 211, 252, 0.34);
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.36);
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 800;
+  padding: 0 14px;
+}
+
+.public-room-code strong {
+  color: var(--accent);
+  font-size: 1rem;
+  letter-spacing: 0.08em;
 }
 
 .daily-reset-notice {
@@ -1036,7 +1076,7 @@ body:has(.room-shell) > .feedback-entry {
     line-height: 1.55;
   }
 
-  .daily-reset-notice {
+.daily-reset-notice {
     display: grid;
     grid-template-columns: auto 1fr;
     gap: 4px 8px;
@@ -1053,6 +1093,7 @@ body:has(.room-shell) > .feedback-entry {
   }
 
   .app-nav,
+  .public-room-actions,
   .inline-actions,
   .admin-actions-row {
     display: grid;
@@ -1253,6 +1294,7 @@ body:has(.room-shell) > .feedback-entry {
   }
 
   .friend-room-panel h1,
+  .public-room-panel h1,
   .room-code-panel h1,
   .invite-card h1 {
     font-size: clamp(2rem, 13vw, 3.1rem);

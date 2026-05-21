@@ -22,6 +22,12 @@ describe('HomePage landing', () => {
   it('focuses the first screen on joining by code and creating a room without an ad slot', () => {
     render(createElement(HomePage));
 
+    expect(screen.getByRole('heading', { name: '모두의 픽셀 월드' })).toBeVisible();
+    expect(screen.getByRole('link', { name: '모두의 방 입장하기' })).toHaveAttribute(
+      'href',
+      '/r/room_Wpbj5a9UeQpnNhTz?inviteCode=STI5'
+    );
+    expect(screen.getByLabelText('공개 방 입장 코드')).toHaveTextContent('STI5');
     expect(screen.getByLabelText('입장 코드')).toBeVisible();
     expect(screen.getByRole('button', { name: '코드로 입장' })).toBeVisible();
     expect(screen.getByLabelText('방장 닉네임')).toBeVisible();
