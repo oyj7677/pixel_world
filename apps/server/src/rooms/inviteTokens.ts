@@ -1,10 +1,12 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 
+export const DEFAULT_INVITE_TOKEN_BYTE_LENGTH = 12;
+
 function toBase64Url(buffer: Buffer): string {
   return buffer.toString('base64').replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '');
 }
 
-export function generateInviteToken(byteLength = 32): string {
+export function generateInviteToken(byteLength = DEFAULT_INVITE_TOKEN_BYTE_LENGTH): string {
   return toBase64Url(randomBytes(byteLength));
 }
 

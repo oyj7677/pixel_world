@@ -26,7 +26,7 @@ const PROPERTY_ALLOWLIST: Partial<
       typeof value === 'number' && Number.isFinite(value),
   },
   invite_link_created: {
-    inviteRoute: (value) => value === '/invite/:token',
+    inviteRoute: (value) => value === '/i/:token' || value === '/invite/:token',
   },
   optional_display_name_set: {
     hasDisplayName: (value) => typeof value === 'boolean',

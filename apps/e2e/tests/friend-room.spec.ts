@@ -14,11 +14,11 @@ async function createRoom(page: Page, roomName = uniqueRoomName('E2E 친구 방'
   await page.getByLabel('방 이름').fill(roomName);
   await page.getByRole('button', { name: '초대 링크 만들기', exact: true }).click();
 
-  const inviteLink = page.locator('.invite-result a').filter({ hasText: /\/invite\// }).first();
+  const inviteLink = page.locator('.invite-result a').filter({ hasText: /\/i\// }).first();
   await expect(inviteLink).toBeVisible();
 
   const inviteUrl = (await inviteLink.getAttribute('href')) ?? '';
-  expect(inviteUrl).toContain('/invite/');
+  expect(inviteUrl).toContain('/i/');
 
   const roomLink = page.getByRole('link', { name: '방 열기', exact: true });
   await expect(roomLink).toBeVisible();
@@ -112,7 +112,7 @@ test('room members can copy a fresh invite address from the room screen', async 
     const freshInviteLink = creator.locator('.room-invite-share a').first();
     await expect(freshInviteLink).toBeVisible();
     const freshInviteUrl = await freshInviteLink.getAttribute('href');
-    expect(freshInviteUrl).toMatch(/\/invite\//);
+    expect(freshInviteUrl).toMatch(/\/i\//);
 
     await placeQuickPixel(invitee, freshInviteUrl!, '초대 소라');
   } finally {

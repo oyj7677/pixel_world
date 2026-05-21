@@ -10,7 +10,8 @@ export const FRIEND_ROOM_MAX_DISPLAY_NAME_LENGTH = 40;
 
 export const FRIEND_ROOM_ROUTES = {
   room: (publicId: string): string => `/r/${publicId}`,
-  invite: (token: string): string => `/invite/${token}`
+  invite: (token: string): string => `/i/${token}`,
+  legacyInvite: (token: string): string => `/invite/${token}`
 } as const;
 
 export function isValidRoomName(name: string): boolean {

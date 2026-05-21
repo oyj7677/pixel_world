@@ -40,7 +40,7 @@ describe('RoomCreateForm', () => {
       roomName: '금요일 친구들',
       todayDailyCanvasId: 'daily_123',
       canvasId: 'room_canvas_123',
-      inviteUrl: 'https://pixel-world.test/invite/invite-token-123',
+      inviteUrl: 'https://pixel-world.test/i/invite-token-123',
       ownerDisplayName: '민아'
     });
 
@@ -56,9 +56,9 @@ describe('RoomCreateForm', () => {
     expect(createRoomMock).toHaveBeenCalledTimes(1);
     expect(screen.getByText('금요일 친구들')).toBeVisible();
     expect(screen.getByText('방장 민아')).toBeVisible();
-    expect(screen.getByRole('link', { name: 'https://pixel-world.test/invite/invite-token-123' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'https://pixel-world.test/i/invite-token-123' })).toHaveAttribute(
       'href',
-      'https://pixel-world.test/invite/invite-token-123'
+      'https://pixel-world.test/i/invite-token-123'
     );
     expect(screen.getByRole('link', { name: '방 열기' })).toHaveAttribute('href', '/r/room_public_123');
   });

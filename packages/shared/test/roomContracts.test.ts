@@ -19,7 +19,8 @@ describe('room contracts', () => {
 
   it('defines stable public routes for room and invite flows', () => {
     expect(FRIEND_ROOM_ROUTES.room('abc123')).toBe('/r/abc123');
-    expect(FRIEND_ROOM_ROUTES.invite('token123')).toBe('/invite/token123');
+    expect(FRIEND_ROOM_ROUTES.invite('token123')).toBe('/i/token123');
+    expect(FRIEND_ROOM_ROUTES.legacyInvite('token123')).toBe('/invite/token123');
   });
 
   it('keeps analytics event names in the Phase-1 privacy-safe set', () => {

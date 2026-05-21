@@ -118,6 +118,7 @@ describe('room repository', () => {
     expect(created.invite).toEqual(
       expect.objectContaining({ roomId: created.room.id, rawToken: expect.any(String), roleOnJoin: 'guest' })
     );
+    expect(created.invite.rawToken).toMatch(/^[A-Za-z0-9_-]{16}$/);
     expect(created.invite).not.toHaveProperty('codeHash');
     expect(created.dailyCanvas).toEqual(
       expect.objectContaining({ roomId: created.room.id, canvasId: created.canvas.id, status: 'active', width: 32, height: 32 })

@@ -11,7 +11,7 @@ import { createPixelSocket } from '../src/lib/socketClient';
 vi.mock('../src/lib/roomApi', () => ({
   createRoomInvite: vi.fn(async () => ({
     roomPublicId: 'room_public_123',
-    inviteUrl: 'http://localhost:3000/invite/fresh-token'
+    inviteUrl: 'http://localhost:3000/i/fresh-token'
   })),
   getRoomToday: vi.fn(async () => ({
     roomPublicId: 'room_public_123',
@@ -239,7 +239,7 @@ describe('RoomCanvasShell', () => {
     });
     vi.mocked(createRoomInvite).mockResolvedValueOnce({
       roomPublicId: 'room_public_123',
-      inviteUrl: 'http://localhost:3000/invite/copied-token'
+      inviteUrl: 'http://localhost:3000/i/copied-token'
     });
 
     render(createElement(RoomCanvasShell, { roomPublicId: 'room_public_123' }));
@@ -251,11 +251,11 @@ describe('RoomCanvasShell', () => {
     await fireEvent.click(await screen.findByRole('button', { name: '초대 주소 복사' }));
 
     await waitFor(() => expect(createRoomInvite).toHaveBeenCalledWith('room_public_123', undefined));
-    expect(writeText).toHaveBeenCalledWith('http://localhost:3000/invite/copied-token');
+    expect(writeText).toHaveBeenCalledWith('http://localhost:3000/i/copied-token');
     expect(screen.getByText('초대 주소를 복사했어요. 친구에게 바로 보내면 됩니다.')).toBeVisible();
-    expect(screen.getByRole('link', { name: 'http://localhost:3000/invite/copied-token' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'http://localhost:3000/i/copied-token' })).toHaveAttribute(
       'href',
-      'http://localhost:3000/invite/copied-token'
+      'http://localhost:3000/i/copied-token'
     );
   });
 

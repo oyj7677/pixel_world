@@ -29,6 +29,7 @@ import { placeQuickPixel, QuickPixelRejectedError } from './quickPixelService';
 import { recordRoomAnalyticsEvent } from './roomAnalytics';
 
 const MAX_DISPLAY_NAME_LENGTH = 40;
+const INVITE_ROUTE_TEMPLATE = '/i/:token';
 
 function inviteSecret(app: FastifyInstance): string {
   return app.config.cookieSecret;
@@ -199,7 +200,7 @@ export async function registerRoomRoutes(app: FastifyInstance): Promise<void> {
         roomPublicId: created.room.publicId,
         actorKey,
         properties: {
-          inviteRoute: '/invite/:token',
+          inviteRoute: INVITE_ROUTE_TEMPLATE,
         },
       });
 
@@ -278,7 +279,7 @@ export async function registerRoomRoutes(app: FastifyInstance): Promise<void> {
         roomPublicId: roomToday.room.publicId,
         actorKey,
         properties: {
-          inviteRoute: '/invite/:token',
+          inviteRoute: INVITE_ROUTE_TEMPLATE,
         },
       });
 

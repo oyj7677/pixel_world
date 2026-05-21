@@ -171,11 +171,12 @@ describe('room routes', () => {
       todayDailyCanvasId: expect.any(String),
       canvasId: expect.stringMatching(/^room_/),
       inviteUrl: expect.stringMatching(
-        /^https:\/\/pixel-world\.test\/invite\//,
+        /^https:\/\/pixel-world\.test\/i\//,
       ),
       ownerDisplayName: `${TEST_PREFIX} 방장`,
     });
     expect(body.inviteUrl).not.toContain('undefined');
+    expect(new URL(body.inviteUrl).pathname).toMatch(/^\/i\/[A-Za-z0-9_-]{16}$/);
     expect(
       response.cookies.some((cookie) => cookie.name === ACTOR_COOKIE),
     ).toBe(true);
@@ -288,7 +289,7 @@ describe('room routes', () => {
     const inviteBody = response.json<CreateRoomInviteResponseDto>();
     expect(inviteBody).toEqual({
       roomPublicId: body.roomPublicId,
-      inviteUrl: expect.stringMatching(/^https:\/\/pixel-world\.test\/invite\//),
+      inviteUrl: expect.stringMatching(/^https:\/\/pixel-world\.test\/i\//),
     });
     expect(inviteBody.inviteUrl).not.toEqual(body.inviteUrl);
   });
@@ -346,7 +347,7 @@ describe('room routes', () => {
     expect(freshInvite.statusCode).toBe(201);
     expect(freshInvite.json<CreateRoomInviteResponseDto>()).toEqual({
       roomPublicId: body.roomPublicId,
-      inviteUrl: expect.stringMatching(/^https:\/\/pixel-world\.test\/invite\//),
+      inviteUrl: expect.stringMatching(/^https:\/\/pixel-world\.test\/i\//),
     });
   });
 
@@ -594,7 +595,7 @@ describe('room routes', () => {
       roomId,
       roomPublicId: body.roomPublicId,
       properties: {
-        inviteRoute: '/invite/:token',
+        inviteRoute: '/i/:token',
         source: RAW_IP,
         value: body.inviteUrl,
         label: inviteToken,
@@ -614,7 +615,7 @@ describe('room routes', () => {
     );
 
     expect(event.rows[0]!.properties).toEqual({
-      inviteRoute: '/invite/:token',
+      inviteRoute: '/i/:token',
     });
     const serializedProperties = JSON.stringify(event.rows[0]!.properties);
     expect(serializedProperties).not.toContain(RAW_IP);
@@ -657,6 +658,6 @@ describe('room routes', () => {
     expect(firstEvent).toBeDefined();
     expect(secondEvent).toBeDefined();
     expect(firstEvent!.properties).toEqual(expect.objectContaining({ canvasSize: '32x32' }));
-    expect(secondEvent!.properties).toEqual(expect.objectContaining({ inviteRoute: '/invite/:token' }));
+    expect(secondEvent!.properties).toEqual(expect.objectContaining({ inviteRoute: '/i/:token' }));
   });
 });
