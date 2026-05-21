@@ -112,6 +112,13 @@ export interface CreatedRoomWithTodayCanvas {
   dailyCanvas: DailyCanvasRecord;
 }
 
+export interface DeleteExpiredDailyCanvasDataResult {
+  dailyCanvasCount: number;
+  canvasCount: number;
+  pixelCount: number;
+  pixelEventCount: number;
+}
+
 export interface CreateInviteInput {
   roomId: string;
   createdByMemberId: string;
@@ -366,6 +373,60 @@ function dateInTimeZone(input: Date | undefined, timeZone: string): string {
 
 function compactDate(date: string): string {
   return date.replaceAll('-', '');
+}
+
+export async function deleteExpiredDailyCanvasData(
+  db: DbClient,
+  options: { now?: Date } = {},
+): Promise<DeleteExpiredDailyCanvasDataResult> {
+  const result = await db.query<{
+    daily_canvas_count: number | string;
+    canvas_count: number | string;
+    pixel_count: number | string;
+    pixel_event_count: number | string;
+  }>(
+    `WITH expired AS MATERIALIZED (
+       SELECT dc.id, dc.canvas_id
+       FROM daily_canvases dc
+       JOIN rooms r ON r.id = dc.room_id
+       JOIN canvases c ON c.id = dc.canvas_id
+       WHERE c.kind = 'room_daily'
+         AND dc.canvas_date < (COALESCE($1::timestamptz, now()) AT TIME ZONE r.timezone)::date
+     ),
+     expired_counts AS (
+       SELECT
+         (SELECT count(*) FROM expired) AS daily_canvas_count,
+         (SELECT count(*) FROM pixels p JOIN expired e ON e.canvas_id = p.canvas_id) AS pixel_count,
+         (SELECT count(*) FROM pixel_events pe JOIN expired e ON e.canvas_id = pe.canvas_id) AS pixel_event_count
+     ),
+     deleted_canvases AS (
+       DELETE FROM canvases c
+       USING expired e
+       WHERE c.id = e.canvas_id
+         AND c.kind = 'room_daily'
+       RETURNING c.id
+     )
+     SELECT
+       expired_counts.daily_canvas_count,
+       (SELECT count(*) FROM deleted_canvases) AS canvas_count,
+       expired_counts.pixel_count,
+       expired_counts.pixel_event_count
+     FROM expired_counts`,
+    [options.now ?? null],
+  );
+  const row = result.rows[0] ?? {
+    daily_canvas_count: 0,
+    canvas_count: 0,
+    pixel_count: 0,
+    pixel_event_count: 0,
+  };
+
+  return {
+    dailyCanvasCount: Number(row.daily_canvas_count),
+    canvasCount: Number(row.canvas_count),
+    pixelCount: Number(row.pixel_count),
+    pixelEventCount: Number(row.pixel_event_count),
+  };
 }
 
 async function createOrGetDailyCanvasForRoom(

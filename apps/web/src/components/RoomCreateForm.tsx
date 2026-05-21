@@ -9,6 +9,7 @@ import {
   isValidRoomCanvasDimension,
 } from '@pixel-world/shared';
 import { createRoom } from '../lib/roomApi';
+import { DailyResetNotice } from './DailyResetNotice';
 
 export function RoomCreateForm() {
   const router = useRouter();
@@ -105,6 +106,7 @@ export function RoomCreateForm() {
             선택한 값으로 가로와 세로가 같은 정사각형 캔버스를 만들어요.
           </small>
         </fieldset>
+        <DailyResetNotice context="create" />
         <button className="primary-action" type="submit" disabled={isSubmitting}>
           {isSubmitting ? '방 만드는 중…' : '방 만들기'}
         </button>

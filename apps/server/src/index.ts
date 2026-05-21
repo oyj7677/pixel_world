@@ -1,11 +1,13 @@
 import { buildApp } from './app';
 import { loadConfig } from './config';
 import { attachRealtimeSocketServer } from './realtime/socketServer';
+import { startDailyCanvasCleanupSchedule } from './services/dailyCanvasCleanupService';
 
 async function main() {
   const config = loadConfig();
   const app = await buildApp(config);
   attachRealtimeSocketServer(app);
+  startDailyCanvasCleanupSchedule(app);
   await app.ready();
 
   await new Promise<void>((resolve, reject) => {

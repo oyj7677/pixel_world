@@ -4,6 +4,7 @@ import { type CSSProperties, type FormEvent, useState } from 'react';
 import type { HexColor, InviteLandingResponseDto, QuickPixelResponseDto } from '@pixel-world/shared';
 import { DEFAULT_PALETTE } from '@pixel-world/shared';
 import { placeQuickPixel } from '../lib/roomApi';
+import { DailyResetNotice } from './DailyResetNotice';
 
 interface InviteQuickPixelProps {
   landing: InviteLandingResponseDto | null;
@@ -90,6 +91,7 @@ export function InviteQuickPixel({ landing, inviteToken, inviteCode }: InviteQui
         <p className="friend-room-copy">
           초대받은 사람도 닉네임을 먼저 설정해야 친구들이 누가 참여했는지 알 수 있어요.
         </p>
+        <DailyResetNotice context="invite" />
         {landing.inviterDisplayName ? (
           <p className="form-message">방장 {landing.inviterDisplayName}님이 보낸 초대입니다.</p>
         ) : null}

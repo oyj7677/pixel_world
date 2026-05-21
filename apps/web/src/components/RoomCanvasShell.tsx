@@ -17,6 +17,7 @@ import {
 } from '@pixel-world/shared';
 import { CanvasBoard } from './CanvasBoard';
 import { ColorTools } from './ColorTools';
+import { DailyResetNotice } from './DailyResetNotice';
 import { StatusBar } from './StatusBar';
 import { downloadCanvasImage } from '../lib/canvasImageDownload';
 import { createRoomInvite, getRoomToday, type InviteCredential, type RoomTodayResponseDto } from '../lib/roomApi';
@@ -439,6 +440,8 @@ export function RoomCanvasShell({ roomPublicId, inviteToken, inviteCode }: RoomC
           </button>
         </div>
       </header>
+
+      <DailyResetNotice context="room" />
 
       {snackbarMessage ? (
         <p className="snackbar" role="status" aria-live="polite">

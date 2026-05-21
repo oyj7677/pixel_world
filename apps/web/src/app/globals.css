@@ -574,6 +574,34 @@ select {
   line-height: 1.55;
 }
 
+.daily-reset-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: 720px;
+  margin: 0;
+  border: 1px solid rgba(125, 211, 252, 0.32);
+  border-radius: 14px;
+  background: rgba(56, 189, 248, 0.1);
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.5;
+  padding: 10px 12px;
+}
+
+.daily-reset-notice strong {
+  flex: 0 0 auto;
+  color: var(--accent);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.daily-reset-notice--room {
+  max-width: 100%;
+  margin-bottom: 14px;
+}
+
 .room-create-form,
 .room-code-form {
   display: grid;
@@ -849,6 +877,22 @@ select {
   .legacy-global-callout p {
     font-size: 0.92rem;
     line-height: 1.55;
+  }
+
+  .daily-reset-notice {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 4px 8px;
+    font-size: 0.86rem;
+  }
+
+  .daily-reset-notice strong,
+  .daily-reset-notice span:last-child {
+    grid-column: 2;
+  }
+
+  .daily-reset-notice span[aria-hidden='true'] {
+    grid-row: 1 / span 2;
   }
 
   .app-nav,

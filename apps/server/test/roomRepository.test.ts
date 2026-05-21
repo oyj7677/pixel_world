@@ -9,6 +9,7 @@ import {
   consumeInviteUse,
   createInvite,
   createRoomWithTodayCanvas,
+  deleteExpiredDailyCanvasData,
   ensureRoomToday,
   ensureRoomMember,
   getRoomToday,
@@ -240,6 +241,80 @@ describe('room repository', () => {
       [created.room.id]
     );
     expect(rowCounts.rows[0]).toEqual({ count: 2 });
+  });
+
+  it('deletes expired daily canvas data before the room-local current date', async () => {
+    const referenceNow = new Date('2026-05-21T15:05:00.000Z');
+    await deleteExpiredDailyCanvasData(pool, { now: referenceNow });
+
+    const expired = await createRoomWithTodayCanvas(pool, {
+      name: 'Room Repository Expired Daily Canvas Test',
+      ownerActorKey: actorKey('expired-owner'),
+      publicIdPrefix: TEST_PREFIX,
+      inviteSecret: INVITE_SECRET,
+      timezone: 'Asia/Seoul',
+      today: new Date('2026-05-20T15:05:00.000Z')
+    });
+    const current = await createRoomWithTodayCanvas(pool, {
+      name: 'Room Repository Current Daily Canvas Test',
+      ownerActorKey: actorKey('current-owner'),
+      publicIdPrefix: TEST_PREFIX,
+      inviteSecret: INVITE_SECRET,
+      timezone: 'Asia/Seoul',
+      today: referenceNow
+    });
+
+    await pool.query(
+      `INSERT INTO pixels (canvas_id, x, y, color_hex, last_actor_key)
+       VALUES ($1, 0, 0, '#FF0000', $2), ($3, 0, 0, '#00FF00', $4)`,
+      [expired.canvas.id, actorKey('expired-pixel'), current.canvas.id, actorKey('current-pixel')]
+    );
+    await pool.query(
+      `INSERT INTO pixel_events (canvas_id, x, y, new_color_hex, actor_key, actor_ip_hash, source)
+       VALUES ($1, 0, 0, '#FF0000', $2, $3, 'user'),
+              ($4, 0, 0, '#00FF00', $5, $6, 'user')`,
+      [
+        expired.canvas.id,
+        actorKey('expired-event'),
+        'a'.repeat(64),
+        current.canvas.id,
+        actorKey('current-event'),
+        'b'.repeat(64)
+      ]
+    );
+
+    const result = await deleteExpiredDailyCanvasData(pool, { now: referenceNow });
+
+    expect(result).toEqual({
+      dailyCanvasCount: 1,
+      canvasCount: 1,
+      pixelCount: 1,
+      pixelEventCount: 1
+    });
+
+    const remaining = await pool.query(
+      `SELECT
+         (SELECT count(*)::int FROM canvases WHERE id = $1) AS expired_canvas_count,
+         (SELECT count(*)::int FROM daily_canvases WHERE id = $2) AS expired_daily_canvas_count,
+         (SELECT count(*)::int FROM pixels WHERE canvas_id = $1) AS expired_pixel_count,
+         (SELECT count(*)::int FROM pixel_events WHERE canvas_id = $1) AS expired_event_count,
+         (SELECT count(*)::int FROM canvases WHERE id = $3) AS current_canvas_count,
+         (SELECT count(*)::int FROM daily_canvases WHERE id = $4) AS current_daily_canvas_count,
+         (SELECT count(*)::int FROM pixels WHERE canvas_id = $3) AS current_pixel_count,
+         (SELECT count(*)::int FROM pixel_events WHERE canvas_id = $3) AS current_event_count`,
+      [expired.canvas.id, expired.dailyCanvas.id, current.canvas.id, current.dailyCanvas.id]
+    );
+
+    expect(remaining.rows[0]).toEqual({
+      expired_canvas_count: 0,
+      expired_daily_canvas_count: 0,
+      expired_pixel_count: 0,
+      expired_event_count: 0,
+      current_canvas_count: 1,
+      current_daily_canvas_count: 1,
+      current_pixel_count: 1,
+      current_event_count: 1
+    });
   });
 
   it('atomically consumes invite uses and records the invite room', async () => {
