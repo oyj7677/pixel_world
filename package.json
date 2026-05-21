@@ -22,5 +22,8 @@
   "devDependencies": {
     "@types/node": "latest",
     "typescript": "latest"
+  },
+  "overrides": {
+    "ws": "^8.20.1"
   }
 }
