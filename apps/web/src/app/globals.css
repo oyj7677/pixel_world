@@ -38,6 +38,13 @@ select {
 
 button {
   cursor: pointer;
+  touch-action: manipulation;
+}
+
+input,
+select {
+  min-height: 44px;
+  font-size: 16px;
 }
 
 .page-shell {
@@ -487,7 +494,7 @@ button {
 .canvas-board {
   display: grid;
   width: min(100%, 640px);
-  min-width: 520px;
+  min-width: 0;
   margin: 0 auto;
   border: 1px solid rgba(71, 85, 105, 0.72);
   background: var(--line);
@@ -496,6 +503,8 @@ button {
 
 .canvas-pixel {
   width: 100%;
+  min-width: 0;
+  min-height: 0;
   aspect-ratio: 1;
   border: 0;
   border-radius: 0;
@@ -716,4 +725,147 @@ button {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+}
+
+@media (max-width: 640px) {
+  body {
+    overflow-x: hidden;
+  }
+
+  .page-shell {
+    width: min(100% - 16px, 640px);
+    min-height: 100svh;
+    padding: 12px 0 calc(24px + env(safe-area-inset-bottom));
+  }
+
+  .panel {
+    border-radius: 16px;
+    padding: 14px;
+  }
+
+  .header {
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+
+  .brand {
+    letter-spacing: 0.04em;
+  }
+
+  .brand strong {
+    max-width: 100%;
+    font-size: clamp(1.55rem, 10vw, 2.4rem);
+    overflow-wrap: anywhere;
+  }
+
+  .brand span,
+  .header__tagline,
+  .friend-room-copy,
+  .legacy-global-callout p {
+    font-size: 0.92rem;
+    line-height: 1.55;
+  }
+
+  .app-nav,
+  .inline-actions,
+  .admin-actions-row {
+    display: grid;
+    grid-template-columns: 1fr;
+    width: 100%;
+  }
+
+  .app-nav__link,
+  .mock-button,
+  .primary-action,
+  .ghost-action,
+  .secondary-link,
+  .admin-panel button {
+    width: 100%;
+    min-height: 48px;
+    padding: 0 14px;
+    text-align: center;
+  }
+
+  .room-invite-share {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .main-grid,
+  .side-stack,
+  .home-room-first,
+  .room-create-form,
+  .quick-pixel-start,
+  .quick-pixel-success {
+    width: 100%;
+  }
+
+  .canvas-placeholder {
+    min-height: 300px;
+    padding: 18px;
+  }
+
+  .canvas-board-panel {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .canvas-board {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .canvas-pixel {
+    touch-action: manipulation;
+  }
+
+  .palette-grid {
+    grid-template-columns: repeat(4, minmax(44px, 1fr));
+    gap: 10px;
+  }
+
+  .palette-swatch {
+    min-height: 44px;
+    border-radius: 12px;
+  }
+
+  .custom-color-row {
+    grid-template-columns: 1fr;
+  }
+
+  .custom-color-input {
+    width: 100%;
+    min-height: 52px;
+  }
+
+  .selected-color-preview {
+    min-height: 58px;
+  }
+
+  .admin-coordinate-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .adsense-slot--leaderboard,
+  .adsense-slot--room-after-create,
+  .adsense-slot--sidebar {
+    min-height: 112px;
+  }
+
+  .friend-room-panel h1,
+  .invite-card h1 {
+    font-size: clamp(2rem, 13vw, 3.1rem);
+    line-height: 1.04;
+  }
+
+  .same-ip-name-suggestion,
+  .quick-pixel-name-field {
+    width: 100%;
+  }
+
+  .event-item {
+    overflow-wrap: anywhere;
+    line-height: 1.45;
+  }
 }
