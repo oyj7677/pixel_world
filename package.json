@@ -9,6 +9,7 @@
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
+    "start": "npm run start --workspace @pixel-world/server",
     "dev:server": "npm run dev --workspace @pixel-world/server",
     "dev:web": "npm run dev --workspace @pixel-world/web",
     "load:socket": "npm run load:socket --workspace @pixel-world/server --",
