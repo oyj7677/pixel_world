@@ -8,6 +8,7 @@
     "dev": "tsx watch src/index.ts",
     "load:socket": "tsx scripts/socketLoad.ts",
     "migrate": "tsx src/db/migrate.ts",
+    "prestart": "npm run migrate",
     "start": "tsx src/index.ts",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
