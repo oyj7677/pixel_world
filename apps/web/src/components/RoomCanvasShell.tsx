@@ -18,6 +18,7 @@ import {
 import { CanvasBoard } from './CanvasBoard';
 import { ColorTools } from './ColorTools';
 import { DailyResetNotice } from './DailyResetNotice';
+import { FeedbackLink } from './FeedbackLink';
 import { StatusBar } from './StatusBar';
 import { downloadCanvasImage } from '../lib/canvasImageDownload';
 import { createRoomInvite, getRoomToday, type InviteCredential, type RoomTodayResponseDto } from '../lib/roomApi';
@@ -142,6 +143,7 @@ export function RoomCanvasShell({ roomPublicId, inviteToken, inviteCode }: RoomC
   const [snackbarMessage, setSnackbarMessage] = useState<string | null>(null);
   const [snackbarError, setSnackbarError] = useState<string | null>(null);
   const [isCreatingInvite, setIsCreatingInvite] = useState(false);
+  const [isActionMenuOpen, setIsActionMenuOpen] = useState(false);
   const socketRef = useRef<PixelSocket | null>(null);
   const pixelAllowanceRef = useRef<PixelAllowanceStatePayload | null>(null);
   const todayRef = useRef<RoomTodayResponseDto | null>(null);
@@ -415,29 +417,31 @@ export function RoomCanvasShell({ roomPublicId, inviteToken, inviteCode }: RoomC
   const canPlacePixel = connected && pixelAllowance !== null && pixelAllowance.savedPixelCount > 0;
 
   return (
-    <main className="page-shell">
+    <main className="page-shell room-shell">
       <header className="header">
         <div className="brand">
           <strong>{today.roomName ?? '친구 방'}</strong>
           <span>오늘의 방 캔버스</span>
         </div>
-        <div className="room-invite-share" aria-live="polite">
-          <div className="room-invite-code-card" aria-label="4자리 입장 코드">
-            <span>입장 코드</span>
-            {visibleInviteCode ? (
-              <strong>{visibleInviteCode}</strong>
-            ) : (
-              <em>{isPreparingInviteCode ? '준비 중…' : '복사하면 생성돼요'}</em>
-            )}
+        <div className="room-invite-share" aria-label="방 초대 공유" aria-live="polite">
+          <div className="room-invite-row">
+            <div className="room-invite-code-card" aria-label="4자리 입장 코드">
+              <span>입장 코드</span>
+              {visibleInviteCode ? (
+                <strong>{visibleInviteCode}</strong>
+              ) : (
+                <em>{isPreparingInviteCode ? '준비 중…' : '복사하면 생성돼요'}</em>
+              )}
+            </div>
+            <button
+              className="ghost-action room-invite-copy"
+              type="button"
+              onClick={handleCopyInvite}
+              disabled={isCreatingInvite || (isPreparingInviteCode && !visibleInviteCode)}
+            >
+              {isCreatingInvite ? '복사 중…' : '초대 주소 복사'}
+            </button>
           </div>
-          <button
-            className="ghost-action"
-            type="button"
-            onClick={handleCopyInvite}
-            disabled={isCreatingInvite || (isPreparingInviteCode && !visibleInviteCode)}
-          >
-            {isCreatingInvite ? '초대 주소 복사 중…' : '초대 주소 복사'}
-          </button>
         </div>
       </header>
 
@@ -469,20 +473,36 @@ export function RoomCanvasShell({ roomPublicId, inviteToken, inviteCode }: RoomC
         </section>
 
         <aside className="side-stack" aria-label="방 캔버스 도구">
-          <StatusBar onlineCount={onlineCount} remainingMs={remainingMs} connected={connected} allowance={pixelAllowance} />
-          <section className="panel canvas-art-download" aria-label="캔버스 작품 이미지 저장">
-            <h2>작품 저장</h2>
-            <p>
-              현재 {canvasWidth}×{canvasHeight} 캔버스 전체 작품을 격자선 없는 PNG로 저장해요.
-            </p>
+          <aside
+            className={`canvas-action-menu${isActionMenuOpen ? ' canvas-action-menu--open' : ''}`}
+            aria-label="방 빠른 작업"
+          >
             <button
-              className="secondary-link"
+              className="canvas-action-menu__toggle"
               type="button"
-              onClick={handleDownloadCanvasImage}
+              aria-expanded={isActionMenuOpen}
+              onClick={() => setIsActionMenuOpen((isOpen) => !isOpen)}
             >
-              작품 이미지 저장
+              상태·저장·피드백
             </button>
-          </section>
+            <div className="canvas-action-menu__panel">
+              <StatusBar onlineCount={onlineCount} remainingMs={remainingMs} connected={connected} allowance={pixelAllowance} />
+              <section className="panel canvas-art-download" aria-label="캔버스 작품 이미지 저장">
+                <h2>작품 저장</h2>
+                <p>
+                  현재 {canvasWidth}×{canvasHeight} 캔버스 전체 작품을 격자선 없는 PNG로 저장해요.
+                </p>
+                <button
+                  className="secondary-link"
+                  type="button"
+                  onClick={handleDownloadCanvasImage}
+                >
+                  작품 이미지 저장
+                </button>
+              </section>
+              <FeedbackLink className="secondary-link canvas-feedback-link">피드백 보내기</FeedbackLink>
+            </div>
+          </aside>
           <section aria-label="방 직접 칠하기 도구">
             <ColorTools selectedColor={selectedColor} eyedropperColor={eyedropperColor} onColorChange={setSelectedColor} />
           </section>

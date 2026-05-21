@@ -1,7 +1,7 @@
 'use client';
 
 import { createElement, memo, useEffect, useMemo, useRef, useState } from 'react';
-import type { CSSProperties, MouseEvent as ReactMouseEvent } from 'react';
+import type { CSSProperties, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from 'react';
 import type { HexColor, PixelRecord } from '@pixel-world/shared';
 
 interface CanvasBoardProps {
@@ -20,6 +20,26 @@ const BOARD_GRID_GAP_SIZE = 1;
 const MIN_GRID_CELL_SIZE = 4;
 const BITMAP_GRID_MIN_RENDERED_CELL_SIZE = 3;
 const BITMAP_GRID_LINE_COLOR = '#334155';
+const MIN_CANVAS_ZOOM = 1;
+const MAX_CANVAS_ZOOM = 4;
+const CANVAS_ZOOM_LEVELS = [MIN_CANVAS_ZOOM, 1.5, 2, 3, MAX_CANVAS_ZOOM] as const;
+const CANVAS_ZOOM_STEP = 0.05;
+
+type PointerPosition = {
+  x: number;
+  y: number;
+};
+
+type DragState = PointerPosition & {
+  pointerId: number;
+  scrollLeft: number;
+  scrollTop: number;
+};
+
+type PinchState = {
+  distance: number;
+  zoom: number;
+};
 
 function pixelKey(x: number, y: number) {
   return `${x},${y}`;
@@ -55,6 +75,40 @@ function gridMetrics(width: number, height: number, availableWidth: number | nul
     width: width * cellSize + Math.max(0, width - 1) * BOARD_GRID_GAP_SIZE,
     height: height * cellSize + Math.max(0, height - 1) * BOARD_GRID_GAP_SIZE,
   };
+}
+
+function zoomedGridMetrics(width: number, height: number, cellSize: number, zoom: number): {
+  cellSize: number;
+  width: number;
+  height: number;
+} {
+  const zoomedCellSize = Math.max(MIN_GRID_CELL_SIZE, Math.round(cellSize * zoom));
+
+  return {
+    cellSize: zoomedCellSize,
+    width: width * zoomedCellSize + Math.max(0, width - 1) * BOARD_GRID_GAP_SIZE,
+    height: height * zoomedCellSize + Math.max(0, height - 1) * BOARD_GRID_GAP_SIZE,
+  };
+}
+
+function clampCanvasZoom(zoom: number) {
+  return Math.min(MAX_CANVAS_ZOOM, Math.max(MIN_CANVAS_ZOOM, Math.round(zoom / CANVAS_ZOOM_STEP) * CANVAS_ZOOM_STEP));
+}
+
+function formatCanvasZoom(zoom: number) {
+  return `${Math.round(zoom * 100)}%`;
+}
+
+function nextCanvasZoom(currentZoom: number, direction: 1 | -1): number {
+  if (direction > 0) {
+    return CANVAS_ZOOM_LEVELS.find((zoom) => zoom > currentZoom + 0.01) ?? MAX_CANVAS_ZOOM;
+  }
+
+  return [...CANVAS_ZOOM_LEVELS].reverse().find((zoom) => zoom < currentZoom - 0.01) ?? MIN_CANVAS_ZOOM;
+}
+
+function pointerDistance(first: PointerPosition, second: PointerPosition) {
+  return Math.hypot(first.x - second.x, first.y - second.y);
 }
 
 function bitmapBackingSize(width: number, height: number): { width: number; height: number } {
@@ -101,12 +155,21 @@ export const CanvasBoard = memo(function CanvasBoard({
 }: CanvasBoardProps) {
   const useBitmapBoard = width * height > BUTTON_GRID_CELL_LIMIT;
   const panelRef = useRef<HTMLElement | null>(null);
+  const viewportRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const pointerPositionsRef = useRef<Map<number, PointerPosition>>(new Map());
+  const dragStateRef = useRef<DragState | null>(null);
+  const pinchStateRef = useRef<PinchState | null>(null);
   const [availableBoardWidth, setAvailableBoardWidth] = useState<number | null>(null);
+  const [canvasZoom, setCanvasZoom] = useState<number>(MIN_CANVAS_ZOOM);
   const bitmapSize = useMemo(() => bitmapBackingSize(width, height), [height, width]);
   const metrics = useMemo(
     () => gridMetrics(width, height, availableBoardWidth),
     [availableBoardWidth, height, width]
+  );
+  const zoomedMetrics = useMemo(
+    () => zoomedGridMetrics(width, height, metrics.cellSize, canvasZoom),
+    [canvasZoom, height, metrics.cellSize, width]
   );
   const pixelColors = useMemo(() => {
     const colors = new Map<string, HexColor>();
@@ -125,12 +188,19 @@ export const CanvasBoard = memo(function CanvasBoard({
     [height, useBitmapBoard, width]
   );
   const boardStyle = {
-    '--canvas-board-height': `${metrics.height}px`,
-    '--canvas-board-width': `${metrics.width}px`,
-    '--canvas-pixel-size': `${metrics.cellSize}px`,
-    gridAutoRows: `${metrics.cellSize}px`,
-    gridTemplateColumns: `repeat(${width}, ${metrics.cellSize}px)`,
+    '--canvas-board-height': `${zoomedMetrics.height}px`,
+    '--canvas-board-width': `${zoomedMetrics.width}px`,
+    '--canvas-pixel-size': `${zoomedMetrics.cellSize}px`,
+    gridAutoRows: `${zoomedMetrics.cellSize}px`,
+    gridTemplateColumns: `repeat(${width}, ${zoomedMetrics.cellSize}px)`,
   } as CSSProperties;
+  const viewportStyle = {
+    '--canvas-viewport-height': `${metrics.height}px`,
+    '--canvas-viewport-width': `${metrics.width}px`,
+  } as CSSProperties;
+  const zoomLabel = formatCanvasZoom(canvasZoom);
+  const canZoomOut = canvasZoom > MIN_CANVAS_ZOOM;
+  const canZoomIn = canvasZoom < MAX_CANVAS_ZOOM;
 
   const paintStatus = canPlacePixel
     ? `선택한 색상 ${selectedColor}로 칠할 수 있습니다. 픽셀 색상 확인도 가능합니다.`
@@ -160,6 +230,10 @@ export const CanvasBoard = memo(function CanvasBoard({
 
     return () => observer.disconnect();
   }, []);
+
+  useEffect(() => {
+    setCanvasZoom(MIN_CANVAS_ZOOM);
+  }, [height, width]);
 
   useEffect(() => {
     if (!useBitmapBoard) {
@@ -236,50 +310,188 @@ export const CanvasBoard = memo(function CanvasBoard({
     }
   }
 
+  function updateCanvasZoom(nextZoom: number) {
+    setCanvasZoom(clampCanvasZoom(nextZoom));
+  }
+
+  function handleZoomButtonClick(direction: 1 | -1) {
+    setCanvasZoom((currentZoom) => nextCanvasZoom(currentZoom, direction));
+  }
+
+  function handleViewportPointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    const viewport = viewportRef.current;
+    if (!viewport) {
+      return;
+    }
+
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // Pointer capture is a progressive enhancement for drag/pinch handling.
+    }
+
+    pointerPositionsRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+    if (pointerPositionsRef.current.size >= 2) {
+      const [first, second] = Array.from(pointerPositionsRef.current.values());
+      if (first && second) {
+        pinchStateRef.current = {
+          distance: Math.max(1, pointerDistance(first, second)),
+          zoom: canvasZoom,
+        };
+        dragStateRef.current = null;
+      }
+      return;
+    }
+
+    if (canvasZoom > MIN_CANVAS_ZOOM) {
+      dragStateRef.current = {
+        pointerId: event.pointerId,
+        x: event.clientX,
+        y: event.clientY,
+        scrollLeft: viewport.scrollLeft,
+        scrollTop: viewport.scrollTop,
+      };
+    }
+  }
+
+  function handleViewportPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    const viewport = viewportRef.current;
+    if (!viewport || !pointerPositionsRef.current.has(event.pointerId)) {
+      return;
+    }
+
+    pointerPositionsRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+    if (pointerPositionsRef.current.size >= 2 && pinchStateRef.current) {
+      const [first, second] = Array.from(pointerPositionsRef.current.values());
+      if (!first || !second) {
+        return;
+      }
+
+      const nextDistance = Math.max(1, pointerDistance(first, second));
+      updateCanvasZoom(pinchStateRef.current.zoom * (nextDistance / pinchStateRef.current.distance));
+      event.preventDefault();
+      return;
+    }
+
+    const dragState = dragStateRef.current;
+    if (dragState && dragState.pointerId === event.pointerId) {
+      viewport.scrollLeft = dragState.scrollLeft - (event.clientX - dragState.x);
+      viewport.scrollTop = dragState.scrollTop - (event.clientY - dragState.y);
+      event.preventDefault();
+    }
+  }
+
+  function handleViewportPointerEnd(event: ReactPointerEvent<HTMLDivElement>) {
+    pointerPositionsRef.current.delete(event.pointerId);
+
+    if (dragStateRef.current?.pointerId === event.pointerId) {
+      dragStateRef.current = null;
+    }
+
+    if (pointerPositionsRef.current.size < 2) {
+      pinchStateRef.current = null;
+    }
+  }
+
+  const boardElement = useBitmapBoard
+    ? createElement('canvas', {
+        'aria-description': paintStatus,
+        'aria-label': `${width}×${height} 픽셀 캔버스`,
+        className: 'canvas-board canvas-board--bitmap',
+        height: bitmapSize.height,
+        onClick: handleBitmapBoardClick,
+        ref: canvasRef,
+        role: 'grid',
+        style: boardStyle,
+        tabIndex: 0,
+        width: bitmapSize.width,
+      })
+    : createElement(
+        'div',
+        {
+          'aria-description': paintStatus,
+          'aria-label': `${width}×${height} 픽셀 캔버스`,
+          className: 'canvas-board',
+          role: 'grid',
+          style: boardStyle
+        },
+        cells.map(({ x, y }) => {
+          const color = pixelColors.get(pixelKey(x, y)) ?? defaultColorHex;
+
+          return createElement('button', {
+            'aria-description': paintStatus,
+            'aria-label': `픽셀 ${x},${y}`,
+            className: 'canvas-pixel',
+            key: pixelKey(x, y),
+            onClick: () => {
+              onInspectPixel(color);
+              if (canPlacePixel) {
+                onPlacePixel(x, y);
+              }
+            },
+            style: { backgroundColor: color },
+            title: `픽셀 ${x},${y}: ${color}`,
+            type: 'button'
+          });
+        })
+      );
+
   return createElement(
     'section',
     { className: 'panel canvas-board-panel', 'aria-label': '픽셀 캔버스', ref: panelRef },
-    useBitmapBoard
-      ? createElement('canvas', {
-          'aria-description': paintStatus,
-          'aria-label': `${width}×${height} 픽셀 캔버스`,
-          className: 'canvas-board canvas-board--bitmap',
-          height: bitmapSize.height,
-          onClick: handleBitmapBoardClick,
-          ref: canvasRef,
-          role: 'grid',
-          style: boardStyle,
-          tabIndex: 0,
-          width: bitmapSize.width,
-        })
-      : createElement(
-          'div',
-          {
-            'aria-description': paintStatus,
-            'aria-label': `${width}×${height} 픽셀 캔버스`,
-            className: 'canvas-board',
-            role: 'grid',
-            style: boardStyle
-          },
-          cells.map(({ x, y }) => {
-            const color = pixelColors.get(pixelKey(x, y)) ?? defaultColorHex;
-
-            return createElement('button', {
-              'aria-description': paintStatus,
-              'aria-label': `픽셀 ${x},${y}`,
-              className: 'canvas-pixel',
-              key: pixelKey(x, y),
-              onClick: () => {
-                onInspectPixel(color);
-                if (canPlacePixel) {
-                  onPlacePixel(x, y);
-                }
-              },
-              style: { backgroundColor: color },
-              title: `픽셀 ${x},${y}: ${color}`,
-              type: 'button'
-            });
-          })
-        )
+    createElement(
+      'div',
+      { className: 'canvas-zoom-controls', role: 'group', 'aria-label': '캔버스 확대/축소' },
+      createElement(
+        'button',
+        {
+          'aria-label': '캔버스 축소',
+          className: 'canvas-zoom-button',
+          disabled: !canZoomOut,
+          onClick: () => handleZoomButtonClick(-1),
+          type: 'button',
+        },
+        '−'
+      ),
+      createElement('span', { className: 'canvas-zoom-value', 'aria-live': 'polite' }, zoomLabel),
+      createElement(
+        'button',
+        {
+          'aria-label': '캔버스 확대',
+          className: 'canvas-zoom-button',
+          disabled: !canZoomIn,
+          onClick: () => handleZoomButtonClick(1),
+          type: 'button',
+        },
+        '+'
+      ),
+      createElement(
+        'button',
+        {
+          'aria-label': '캔버스 기본 크기로',
+          className: 'canvas-zoom-reset',
+          disabled: !canZoomOut,
+          onClick: () => updateCanvasZoom(MIN_CANVAS_ZOOM),
+          type: 'button',
+        },
+        '초기화'
+      )
+    ),
+    createElement(
+      'div',
+      {
+        className: `canvas-board-viewport${canvasZoom > MIN_CANVAS_ZOOM ? ' canvas-board-viewport--zoomed' : ''}`,
+        onPointerCancel: handleViewportPointerEnd,
+        onPointerDown: handleViewportPointerDown,
+        onPointerMove: handleViewportPointerMove,
+        onPointerUp: handleViewportPointerEnd,
+        ref: viewportRef,
+        style: viewportStyle,
+      },
+      boardElement
+    ),
+    createElement('p', { className: 'canvas-zoom-help' }, '앱에서는 +/− 버튼 또는 두 손가락 핀치로 확대하고, 확대 후 캔버스를 끌어 이동할 수 있어요.')
   );
 });

@@ -82,6 +82,29 @@ describe('RoomCanvasShell', () => {
     });
   });
 
+  it('groups invite sharing and canvas utilities into app-friendly action areas', async () => {
+    render(createElement(RoomCanvasShell, { roomPublicId: 'room_public_123' }));
+
+    await waitFor(() => expect(socketHandlers.has('connect')).toBe(true));
+    emitSocket('connect', undefined);
+    emitSocket('canvasSnapshot', snapshot());
+
+    const inviteShare = await screen.findByLabelText('방 초대 공유');
+    expect(inviteShare.querySelector('.room-invite-row')).not.toBeNull();
+    expect(screen.getByLabelText('4자리 입장 코드')).toBeVisible();
+    expect(screen.getByRole('button', { name: '초대 주소 복사' })).toHaveClass('room-invite-copy');
+
+    const quickActions = screen.getByRole('complementary', { name: '방 빠른 작업' });
+    expect(quickActions).toHaveClass('canvas-action-menu');
+    expect(screen.getByRole('button', { name: '상태·저장·피드백' })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByRole('region', { name: '캔버스 상태' })).toBeVisible();
+    expect(screen.getByRole('region', { name: '캔버스 작품 이미지 저장' })).toBeVisible();
+    expect(screen.getByRole('link', { name: '피드백 보내기' })).toHaveAttribute(
+      'href',
+      'https://open.kakao.com/o/sVe6cZvi'
+    );
+  });
+
   it('shows saved pixel actions without urgent expiry copy', async () => {
     render(createElement(RoomCanvasShell, { roomPublicId: 'room_public_123' }));
 

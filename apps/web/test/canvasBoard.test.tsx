@@ -87,6 +87,45 @@ describe('CanvasBoard', () => {
     expect(boardElement.style.gridTemplateColumns).toBe('repeat(56, 12px)');
   });
 
+  it('lets app users zoom the canvas for more precise pixel selection', () => {
+    render(
+      createElement(CanvasBoard, {
+        width: 56,
+        height: 56,
+        pixels: [],
+        defaultColorHex: '#FFFFFF',
+        selectedColor: '#EF4444',
+        canPlacePixel: true,
+        onInspectPixel: vi.fn(),
+        onPlacePixel: vi.fn()
+      })
+    );
+
+    const board = screen.getByRole('grid', { name: '56×56 픽셀 캔버스' }) as HTMLElement;
+    const viewport = board.closest('.canvas-board-viewport') as HTMLElement;
+    expect(viewport.style.getPropertyValue('--canvas-viewport-width')).toBe('727px');
+    expect(viewport.style.getPropertyValue('--canvas-viewport-height')).toBe('727px');
+    expect(screen.getByRole('group', { name: '캔버스 확대/축소' })).toBeVisible();
+    expect(screen.getByText('100%')).toBeVisible();
+    expect(screen.getByRole('button', { name: '캔버스 축소' })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: '캔버스 확대' }));
+
+    expect(screen.getByText('150%')).toBeVisible();
+    expect(viewport.style.getPropertyValue('--canvas-viewport-width')).toBe('727px');
+    expect(viewport.style.getPropertyValue('--canvas-viewport-height')).toBe('727px');
+    expect(board.style.getPropertyValue('--canvas-board-width')).toBe('1063px');
+    expect(board.style.getPropertyValue('--canvas-board-height')).toBe('1063px');
+    expect(board.style.gridAutoRows).toBe('18px');
+    expect(screen.getByRole('button', { name: '캔버스 기본 크기로' })).toBeEnabled();
+
+    fireEvent.click(screen.getByRole('button', { name: '캔버스 기본 크기로' }));
+
+    expect(screen.getByText('100%')).toBeVisible();
+    expect(board.style.getPropertyValue('--canvas-board-width')).toBe('727px');
+    expect(board.style.gridAutoRows).toBe('12px');
+  });
+
   it('maps clicks on a large bitmap-rendered board back to pixel coordinates', () => {
     const onInspectPixel = vi.fn();
     const onPlacePixel = vi.fn();
