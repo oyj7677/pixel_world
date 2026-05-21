@@ -46,6 +46,7 @@ import {
 } from '../services/pixelAllowanceService';
 import {
   ensureRoomToday,
+  ensureRoomMember,
   getActiveRoomMember,
   getRoomTodayIncludingArchived,
   validateInvite,
@@ -311,6 +312,14 @@ async function resolveSocketContext(
     if (!invite || invite.roomId !== roomToday.room.id) {
       throw new Error('room_join_rejected');
     }
+
+    await ensureRoomMember(app.db, {
+      roomId: roomToday.room.id,
+      actorKey,
+      role: invite.roleOnJoin,
+      inviteId: invite.id,
+      displayName: null,
+    });
   }
 
   return {

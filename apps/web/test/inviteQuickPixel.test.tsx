@@ -71,7 +71,10 @@ describe('InviteQuickPixel', () => {
     });
     expect(screen.getByText('픽셀을 16,16에 남겼어요.')).toBeVisible();
     expect(screen.queryByRole('heading', { name: '이름을 남길까요? 선택 사항이에요.' })).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: '방으로 들어가기' })).toHaveAttribute('href', '/r/room_public_123');
+    expect(screen.getByRole('link', { name: '방으로 들어가기' })).toHaveAttribute(
+      'href',
+      '/r/room_public_123?inviteToken=invite-token-123'
+    );
   });
 
   it('skips nickname input when the current browser session already has a nickname', async () => {

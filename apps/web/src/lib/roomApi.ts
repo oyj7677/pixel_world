@@ -22,6 +22,15 @@ function apiUrl(path: string): string {
   return `${API_ORIGIN}${path}`;
 }
 
+function withInviteToken(path: string, inviteToken?: string): string {
+  if (!inviteToken) {
+    return path;
+  }
+
+  const separator = path.includes('?') ? '&' : '?';
+  return `${path}${separator}inviteToken=${encodeURIComponent(inviteToken)}`;
+}
+
 async function readJson<T>(response: Response): Promise<T> {
   return (await response.json()) as T;
 }
@@ -50,8 +59,8 @@ export function createRoom(payload: CreateRoomRequestDto): Promise<CreateRoomRes
   });
 }
 
-export function createRoomInvite(roomPublicId: string): Promise<CreateRoomInviteResponseDto> {
-  return requestJson<CreateRoomInviteResponseDto>(`/api/rooms/${encodeURIComponent(roomPublicId)}/invites`, {
+export function createRoomInvite(roomPublicId: string, inviteToken?: string): Promise<CreateRoomInviteResponseDto> {
+  return requestJson<CreateRoomInviteResponseDto>(withInviteToken(`/api/rooms/${encodeURIComponent(roomPublicId)}/invites`, inviteToken), {
     method: 'POST'
   });
 }
@@ -93,8 +102,8 @@ export function updateRoomDisplayName(
   });
 }
 
-export async function getRoomToday(roomPublicId: string): Promise<RoomTodayResponseDto | null> {
-  const response = await fetch(apiUrl(`/api/rooms/${encodeURIComponent(roomPublicId)}/today`), {
+export async function getRoomToday(roomPublicId: string, inviteToken?: string): Promise<RoomTodayResponseDto | null> {
+  const response = await fetch(apiUrl(withInviteToken(`/api/rooms/${encodeURIComponent(roomPublicId)}/today`, inviteToken)), {
     credentials: 'include',
     cache: 'no-store'
   });

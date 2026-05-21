@@ -5,7 +5,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CanvasSnapshotPayload, PublicRecentPixelEvent } from '@pixel-world/shared';
 import { RoomCanvasShell } from '../src/components/RoomCanvasShell';
-import { createRoomInvite } from '../src/lib/roomApi';
+import { createRoomInvite, getRoomToday } from '../src/lib/roomApi';
+import { createPixelSocket } from '../src/lib/socketClient';
 
 vi.mock('../src/lib/roomApi', () => ({
   createRoomInvite: vi.fn(async () => ({
@@ -249,12 +250,32 @@ describe('RoomCanvasShell', () => {
 
     await fireEvent.click(await screen.findByRole('button', { name: '초대 주소 복사' }));
 
-    await waitFor(() => expect(createRoomInvite).toHaveBeenCalledWith('room_public_123'));
+    await waitFor(() => expect(createRoomInvite).toHaveBeenCalledWith('room_public_123', undefined));
     expect(writeText).toHaveBeenCalledWith('http://localhost:3000/invite/copied-token');
     expect(screen.getByText('초대 주소를 복사했어요. 친구에게 바로 보내면 됩니다.')).toBeVisible();
     expect(screen.getByRole('link', { name: 'http://localhost:3000/invite/copied-token' })).toHaveAttribute(
       'href',
       'http://localhost:3000/invite/copied-token'
     );
+  });
+
+  it('keeps invite token access on mobile browsers that drop the API cookie', async () => {
+    render(createElement(RoomCanvasShell, { roomPublicId: 'room_public_123', inviteToken: 'invite-token-123' }));
+
+    await waitFor(() => expect(socketHandlers.has('connect')).toBe(true));
+
+    expect(vi.mocked(getRoomToday)).toHaveBeenCalledWith('room_public_123', 'invite-token-123');
+    expect(vi.mocked(createPixelSocket)).toHaveBeenCalledWith({
+      roomPublicId: 'room_public_123',
+      dailyCanvasId: 'daily-1',
+      date: 'today',
+      inviteToken: 'invite-token-123'
+    });
+
+    emitSocket('connect', undefined);
+    emitSocket('canvasSnapshot', snapshot());
+    await fireEvent.click(await screen.findByRole('button', { name: '초대 주소 복사' }));
+
+    await waitFor(() => expect(createRoomInvite).toHaveBeenCalledWith('room_public_123', 'invite-token-123'));
   });
 });

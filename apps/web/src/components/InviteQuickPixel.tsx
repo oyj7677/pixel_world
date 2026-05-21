@@ -35,6 +35,7 @@ export function InviteQuickPixel({ landing, inviteToken }: InviteQuickPixelProps
   const quickPixelPreviewStyle = { '--quick-pixel-color': suggestedColor } as CSSProperties;
   const participantDisplayName = landing.participantDisplayName?.trim() ?? '';
   const needsDisplayName = !participantDisplayName;
+  const roomHref = `/r/${encodeURIComponent(landing.roomPublicId)}?inviteToken=${encodeURIComponent(inviteToken)}`;
   const suggestedParticipantDisplayName = needsDisplayName
     ? landing.suggestedParticipantDisplayName?.trim() ?? ''
     : '';
@@ -127,7 +128,7 @@ export function InviteQuickPixel({ landing, inviteToken }: InviteQuickPixelProps
         ) : (
           <div className="quick-pixel-success" aria-live="polite">
             <p>픽셀을 {quickPixel.x},{quickPixel.y}에 남겼어요.</p>
-            <a className="secondary-link" href={`/r/${quickPixel.roomPublicId}`}>
+            <a className="secondary-link" href={roomHref}>
               방으로 들어가기
             </a>
           </div>

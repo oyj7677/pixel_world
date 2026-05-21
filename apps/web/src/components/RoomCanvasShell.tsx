@@ -24,6 +24,7 @@ import { createPixelSocket, type PixelSocket } from '../lib/socketClient';
 
 interface RoomCanvasShellProps {
   roomPublicId: string;
+  inviteToken?: string | undefined;
 }
 
 function deadlineFromTimestamp(timestamp: unknown) {
@@ -95,7 +96,7 @@ function isForRoom(today: RoomTodayResponseDto | null, payload: { roomPublicId?:
   );
 }
 
-export function RoomCanvasShell({ roomPublicId }: RoomCanvasShellProps) {
+export function RoomCanvasShell({ roomPublicId, inviteToken }: RoomCanvasShellProps) {
   const [today, setToday] = useState<RoomTodayResponseDto | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [selectedColor, setSelectedColor] = useState<HexColor>(DEFAULT_PALETTE[9]!);
@@ -132,7 +133,7 @@ export function RoomCanvasShell({ roomPublicId }: RoomCanvasShellProps) {
     let cancelled = false;
     let socket: PixelSocket | null = null;
 
-    void getRoomToday(roomPublicId)
+    void getRoomToday(roomPublicId, inviteToken)
       .then((roomToday) => {
         if (cancelled) {
           return;
@@ -150,7 +151,8 @@ export function RoomCanvasShell({ roomPublicId }: RoomCanvasShellProps) {
         socket = createPixelSocket({
           roomPublicId: roomToday.roomPublicId,
           dailyCanvasId: roomToday.todayDailyCanvasId,
-          date: 'today'
+          date: 'today',
+          inviteToken
         });
         socketRef.current = socket;
 
@@ -225,7 +227,7 @@ export function RoomCanvasShell({ roomPublicId }: RoomCanvasShellProps) {
       socketRef.current = null;
       socket?.disconnect();
     };
-  }, [roomPublicId]);
+  }, [inviteToken, roomPublicId]);
 
   useEffect(() => {
     if (cooldownDeadlineMs === null) {
@@ -279,7 +281,7 @@ export function RoomCanvasShell({ roomPublicId }: RoomCanvasShellProps) {
     setInviteShareError(null);
 
     try {
-      const response = await createRoomInvite(roomPublicId);
+      const response = await createRoomInvite(roomPublicId, inviteToken);
       setInviteUrl(response.inviteUrl);
 
       try {
@@ -297,7 +299,7 @@ export function RoomCanvasShell({ roomPublicId }: RoomCanvasShellProps) {
     } finally {
       setIsCreatingInvite(false);
     }
-  }, [isCreatingInvite, roomPublicId]);
+  }, [inviteToken, isCreatingInvite, roomPublicId]);
 
   if (notFound) {
     return (

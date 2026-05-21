@@ -7,7 +7,7 @@ export interface PixelSocketOptions {
   roomPublicId?: string;
   dailyCanvasId?: string;
   date?: 'today';
-  inviteToken?: string;
+  inviteToken?: string | undefined;
 }
 
 export function createPixelSocket(options: PixelSocketOptions = {}) {

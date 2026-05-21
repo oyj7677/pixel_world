@@ -425,7 +425,7 @@ describe('room-scoped Socket.IO realtime', () => {
     ).rejects.toThrow(/room_join_rejected|websocket error|xhr poll error/);
   });
 
-  it('lets invite-only sockets view but rejects room pixel placement until membership exists', async () => {
+  it('lets invite-token sockets place room pixels when the browser has no API cookie', async () => {
     const room = await createTestRoom();
     const inviteOnlyActor = testActorKey();
     const memberActor = testActorKey();
@@ -441,8 +441,7 @@ describe('room-scoped Socket.IO realtime', () => {
     });
     await Promise.all([waitForSnapshot(inviteOnlyClient), waitForSnapshot(memberClient)]);
 
-    const rejected = waitForEvent(inviteOnlyClient, 'placementRejected');
-    const noBroadcast = waitForNoEvent(memberClient, 'pixelUpdated');
+    const broadcast = waitForEvent<PixelUpdatedPayload>(memberClient, 'pixelUpdated');
     inviteOnlyClient.emit('placePixel', {
       roomPublicId: room.room.publicId,
       dailyCanvasId: room.dailyCanvas.id,
@@ -452,16 +451,20 @@ describe('room-scoped Socket.IO realtime', () => {
       colorHex: '#8b5cf6'
     });
 
-    await expect(rejected).resolves.toEqual(
-      expect.objectContaining({ reason: 'invalid_canvas', message: 'Room membership is required to place pixels.' })
-    );
-    await expect(noBroadcast).resolves.toBeUndefined();
+    await expect(broadcast).resolves.toEqual(expect.objectContaining({
+      roomPublicId: room.room.publicId,
+      dailyCanvasId: room.dailyCanvas.id,
+      canvasId: room.canvas.id,
+      x: 8,
+      y: 9,
+      colorHex: '#8B5CF6'
+    }));
     const persisted = await pool.query('SELECT 1 FROM pixels WHERE canvas_id = $1 AND x = $2 AND y = $3', [
       room.canvas.id,
       8,
       9
     ]);
-    expect(persisted.rowCount).toBe(0);
+    expect(persisted.rowCount).toBe(1);
   });
 
   it('lets room members place multiple pixels immediately in temporary unlimited mode', async () => {

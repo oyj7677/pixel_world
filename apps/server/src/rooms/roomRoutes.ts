@@ -18,6 +18,7 @@ import {
   createRoomWithTodayCanvas,
   ensureRoomToday,
   ensureRoomTodayById,
+  ensureRoomMember,
   getActiveRoomMember,
   getRecentInviteMemberByIpHash,
   updateRoomMemberDisplayName,
@@ -132,6 +133,32 @@ function quickPixelSuggestion(): InviteLandingResponseDto['quickPixelSuggestion'
   };
 }
 
+async function ensureMemberFromInviteToken(
+  app: FastifyInstance,
+  input: {
+    roomId: string;
+    actorKey: string;
+    inviteToken?: string | undefined;
+  },
+) {
+  if (!input.inviteToken) {
+    return null;
+  }
+
+  const invite = await validateInvite(app.db, input.inviteToken, inviteSecret(app));
+  if (!invite || invite.roomId !== input.roomId) {
+    return null;
+  }
+
+  return ensureRoomMember(app.db, {
+    roomId: input.roomId,
+    actorKey: input.actorKey,
+    role: invite.roleOnJoin,
+    inviteId: invite.id,
+    displayName: null,
+  });
+}
+
 export async function registerRoomRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Body: CreateRoomRequestDto }>(
     '/api/rooms',
@@ -190,7 +217,7 @@ export async function registerRoomRoutes(app: FastifyInstance): Promise<void> {
   );
 
 
-  app.get<{ Params: { roomPublicId: string } }>(
+  app.get<{ Params: { roomPublicId: string }; Querystring: { inviteToken?: string } }>(
     '/api/rooms/:roomPublicId/today',
     async (request, reply) => {
       const roomToday = await ensureRoomToday(app.db, request.params.roomPublicId);
@@ -199,7 +226,12 @@ export async function registerRoomRoutes(app: FastifyInstance): Promise<void> {
       }
 
       const actorKey = getOrSetRoomActorKey(app, request, reply);
-      const member = await getActiveRoomMember(app.db, roomToday.room.id, actorKey);
+      const member = await getActiveRoomMember(app.db, roomToday.room.id, actorKey)
+        ?? await ensureMemberFromInviteToken(app, {
+          roomId: roomToday.room.id,
+          actorKey,
+          inviteToken: request.query.inviteToken,
+        });
       if (!member) {
         return reply.code(404).send({ error: 'room_membership_required' });
       }
@@ -214,7 +246,7 @@ export async function registerRoomRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
-  app.post<{ Params: { roomPublicId: string } }>(
+  app.post<{ Params: { roomPublicId: string }; Querystring: { inviteToken?: string } }>(
     '/api/rooms/:roomPublicId/invites',
     async (request, reply) => {
       const roomToday = await ensureRoomToday(app.db, request.params.roomPublicId);
@@ -223,7 +255,12 @@ export async function registerRoomRoutes(app: FastifyInstance): Promise<void> {
       }
 
       const actorKey = getOrSetRoomActorKey(app, request, reply);
-      const member = await getActiveRoomMember(app.db, roomToday.room.id, actorKey);
+      const member = await getActiveRoomMember(app.db, roomToday.room.id, actorKey)
+        ?? await ensureMemberFromInviteToken(app, {
+          roomId: roomToday.room.id,
+          actorKey,
+          inviteToken: request.query.inviteToken,
+        });
       if (!member) {
         return reply.code(404).send({ error: 'room_membership_required' });
       }

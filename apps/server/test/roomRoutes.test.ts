@@ -305,6 +305,51 @@ describe('room routes', () => {
     expect(response.json()).toEqual({ error: 'room_membership_required' });
   });
 
+  it('opens the room with an invite token when the browser does not retain the API cookie', async () => {
+    const { body } = await createRoom(`${TEST_PREFIX} mobile cookie blocked room`);
+    const inviteToken = new URL(body.inviteUrl).pathname.split('/').pop()!;
+
+    const quickPixel = await app!.inject({
+      method: 'POST',
+      url: `/api/rooms/${body.roomPublicId}/quick-pixel`,
+      payload: { inviteToken, suggestedColorHex: '#22c55e', displayName: '모바일직원' },
+      headers: { 'x-forwarded-for': '198.51.100.88' },
+    });
+    expect(quickPixel.statusCode).toBe(201);
+
+    const withoutInviteToken = await app!.inject({
+      method: 'GET',
+      url: `/api/rooms/${body.roomPublicId}/today`,
+      headers: { 'x-forwarded-for': '198.51.100.88' },
+    });
+    expect(withoutInviteToken.statusCode).toBe(404);
+
+    const withInviteToken = await app!.inject({
+      method: 'GET',
+      url: `/api/rooms/${body.roomPublicId}/today?inviteToken=${encodeURIComponent(inviteToken)}`,
+      headers: { 'x-forwarded-for': '198.51.100.88' },
+    });
+    expect(withInviteToken.statusCode).toBe(200);
+    expect(withInviteToken.json()).toEqual({
+      roomPublicId: body.roomPublicId,
+      roomName: `${TEST_PREFIX} mobile cookie blocked room`,
+      todayDailyCanvasId: body.todayDailyCanvasId,
+      canvasId: body.canvasId,
+      canvasSize: FRIEND_ROOM_CANVAS_SIZE,
+    });
+
+    const freshInvite = await app!.inject({
+      method: 'POST',
+      url: `/api/rooms/${body.roomPublicId}/invites?inviteToken=${encodeURIComponent(inviteToken)}`,
+      headers: { 'x-forwarded-for': '198.51.100.88' },
+    });
+    expect(freshInvite.statusCode).toBe(201);
+    expect(freshInvite.json<CreateRoomInviteResponseDto>()).toEqual({
+      roomPublicId: body.roomPublicId,
+      inviteUrl: expect.stringMatching(/^https:\/\/pixel-world\.test\/invite\//),
+    });
+  });
+
   it('rejects invalid invite tokens without leaking private room details', async () => {
     await createRoom(`${TEST_PREFIX} private invalid invite room`);
 
