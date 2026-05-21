@@ -16,10 +16,10 @@ import { getOrSetActorKey, getRequestIp, hashIpAddress } from '../auth/actorIden
 import {
   createInvite,
   createRoomWithTodayCanvas,
+  ensureRoomToday,
+  ensureRoomTodayById,
   getActiveRoomMember,
   getRecentInviteMemberByIpHash,
-  getRoomToday,
-  getRoomTodayById,
   updateRoomMemberDisplayName,
   validateInvite,
 } from './roomRepository';
@@ -193,7 +193,7 @@ export async function registerRoomRoutes(app: FastifyInstance): Promise<void> {
   app.get<{ Params: { roomPublicId: string } }>(
     '/api/rooms/:roomPublicId/today',
     async (request, reply) => {
-      const roomToday = await getRoomToday(app.db, request.params.roomPublicId);
+      const roomToday = await ensureRoomToday(app.db, request.params.roomPublicId);
       if (!roomToday) {
         return reply.code(404).send({ error: 'room_not_found' });
       }
@@ -217,7 +217,7 @@ export async function registerRoomRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Params: { roomPublicId: string } }>(
     '/api/rooms/:roomPublicId/invites',
     async (request, reply) => {
-      const roomToday = await getRoomToday(app.db, request.params.roomPublicId);
+      const roomToday = await ensureRoomToday(app.db, request.params.roomPublicId);
       if (!roomToday) {
         return reply.code(404).send({ error: 'room_not_found' });
       }
@@ -266,7 +266,7 @@ export async function registerRoomRoutes(app: FastifyInstance): Promise<void> {
         return sendInvalidInvite(reply);
       }
 
-      const roomToday = await getRoomTodayById(app.db, invite.roomId);
+      const roomToday = await ensureRoomTodayById(app.db, invite.roomId);
       if (!roomToday) {
         return sendInvalidInvite(reply);
       }
@@ -351,7 +351,7 @@ export async function registerRoomRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(400).send({ error: 'invalid_display_name' });
     }
 
-    const roomToday = await getRoomToday(app.db, request.params.roomPublicId);
+    const roomToday = await ensureRoomToday(app.db, request.params.roomPublicId);
     if (!roomToday) {
       return reply.code(404).send({ error: 'room_membership_required' });
     }

@@ -19,6 +19,7 @@ import { createDbPool, type DbPool } from '../src/db/index';
 import { runMigrations } from '../src/db/migrate';
 import type { PixelSocketServer } from '../src/realtime/socketServer';
 import { recordRoomAnalyticsEvent } from '../src/rooms/roomAnalytics';
+import { createRoomWithTodayCanvas } from '../src/rooms/roomRepository';
 
 const TEST_PREFIX = `room-routes-test-${process.pid}`;
 const RAW_IP = '203.0.113.44';
@@ -217,6 +218,59 @@ describe('room routes', () => {
       roomName: `${TEST_PREFIX} today room`,
       todayDailyCanvasId: body.todayDailyCanvasId,
       canvasId: body.canvasId,
+      canvasSize: FRIEND_ROOM_CANVAS_SIZE,
+    });
+  });
+
+  it('opens an older invite by creating today’s room canvas before the invite recipient joins', async () => {
+    const created = await createRoomWithTodayCanvas(pool, {
+      name: `${TEST_PREFIX} older invite room`,
+      ownerActorKey: `${TEST_PREFIX}-older-invite-owner`,
+      ownerDisplayName: `${TEST_PREFIX} 오래된 방장`,
+      publicIdPrefix: TEST_PREFIX,
+      inviteSecret: testConfig().cookieSecret,
+      today: new Date('2026-05-17T03:30:00.000Z'),
+    });
+
+    const landingResponse = await app!.inject({
+      method: 'GET',
+      url: `/api/invites/${created.invite.rawToken}/landing`,
+      headers: { 'x-forwarded-for': RAW_IP },
+    });
+
+    expect(landingResponse.statusCode).toBe(200);
+    const landingBody = landingResponse.json();
+    expect(landingBody.roomPublicId).toBe(created.room.publicId);
+    expect(landingBody.todayDailyCanvasId).not.toBe(created.dailyCanvas.id);
+
+    const recipientCookie = actorCookieFrom(landingResponse);
+    const joinResponse = await app!.inject({
+      method: 'POST',
+      url: `/api/rooms/${created.room.publicId}/quick-pixel`,
+      headers: {
+        cookie: recipientCookie,
+        'x-forwarded-for': RAW_IP,
+      },
+      payload: {
+        inviteToken: created.invite.rawToken,
+        displayName: `${TEST_PREFIX} 초대 직원`,
+      },
+    });
+
+    expect(joinResponse.statusCode).toBe(201);
+
+    const todayResponse = await app!.inject({
+      method: 'GET',
+      url: `/api/rooms/${created.room.publicId}/today`,
+      headers: { cookie: recipientCookie },
+    });
+
+    expect(todayResponse.statusCode).toBe(200);
+    expect(todayResponse.json()).toEqual({
+      roomPublicId: created.room.publicId,
+      roomName: `${TEST_PREFIX} older invite room`,
+      todayDailyCanvasId: landingBody.todayDailyCanvasId,
+      canvasId: landingBody.canvasId,
       canvasSize: FRIEND_ROOM_CANVAS_SIZE,
     });
   });

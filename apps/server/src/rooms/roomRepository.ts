@@ -320,6 +320,64 @@ function compactDate(date: string): string {
   return date.replaceAll('-', '');
 }
 
+async function createOrGetDailyCanvasForRoom(
+  db: DbClient,
+  room: RoomRecord,
+  canvasDate: string,
+): Promise<{
+  dailyCanvas: DailyCanvasRecord;
+  canvas: CanvasRecord;
+}> {
+  const width = room.defaultWidth;
+  const height = room.defaultHeight;
+  const requiredPixelCount = calculateRequiredPixelCount({ width, height });
+  const canvasId = `room_${room.publicId}_${compactDate(canvasDate)}`;
+
+  const canvasResult = await db.query<CanvasRow>(
+    `INSERT INTO canvases (id, slug, width, height, kind)
+     VALUES ($1, $1, $2, $3, 'room_daily')
+     ON CONFLICT (id)
+     DO UPDATE SET width = EXCLUDED.width,
+                   height = EXCLUDED.height,
+                   kind = EXCLUDED.kind,
+                   updated_at = now()
+     RETURNING id, slug, width, height, kind`,
+    [canvasId, width, height],
+  );
+  const canvas = mapCanvas(canvasResult.rows[0]!);
+
+  const dailyCanvasResult = await db.query<DailyCanvasRow>(
+    `INSERT INTO daily_canvases
+       (room_id, canvas_date, canvas_id, status, width, height, cooldown_ms, target_completion_ms,
+        expected_participant_count, required_pixel_count, pixel_allowance_interval_ms,
+        pixel_allowance_max_storage_ms, opened_at)
+     VALUES ($1, $2::date, $3, 'active', $4, $5, $6, $7, $8, $9, $10, $11, now())
+     ON CONFLICT (room_id, canvas_date)
+     DO UPDATE SET opened_at = daily_canvases.opened_at
+     RETURNING id, room_id, canvas_date, canvas_id, status, width, height, target_completion_ms,
+               expected_participant_count, required_pixel_count, pixel_allowance_interval_ms,
+               pixel_allowance_max_storage_ms, opened_at`,
+    [
+      room.id,
+      canvasDate,
+      canvas.id,
+      width,
+      height,
+      room.defaultCooldownMs,
+      room.targetCompletionMs,
+      room.expectedParticipantCount,
+      requiredPixelCount,
+      room.pixelAllowanceIntervalMs,
+      room.pixelAllowanceMaxStorageMs,
+    ],
+  );
+
+  return {
+    canvas,
+    dailyCanvas: mapDailyCanvas(dailyCanvasResult.rows[0]!),
+  };
+}
+
 export async function createRoomWithTodayCanvas(
   db: DbClient,
   input: CreateRoomWithTodayCanvasInput
@@ -378,39 +436,7 @@ export async function createRoomWithTodayCanvas(
     );
     const ownerMember = mapMember(memberResult.rows[0]!);
 
-    const canvasId = `room_${room.publicId}_${compactDate(canvasDate)}`;
-    const canvasResult = await client.query<CanvasRow>(
-      `INSERT INTO canvases (id, slug, width, height, kind)
-       VALUES ($1, $1, $2, $3, 'room_daily')
-       RETURNING id, slug, width, height, kind`,
-      [canvasId, width, height]
-    );
-    const canvas = mapCanvas(canvasResult.rows[0]!);
-
-    const dailyCanvasResult = await client.query<DailyCanvasRow>(
-      `INSERT INTO daily_canvases
-       (room_id, canvas_date, canvas_id, status, width, height, cooldown_ms, target_completion_ms,
-        expected_participant_count, required_pixel_count, pixel_allowance_interval_ms,
-        pixel_allowance_max_storage_ms, opened_at)
-       VALUES ($1, $2::date, $3, 'active', $4, $5, $6, $7, $8, $9, $10, $11, now())
-       RETURNING id, room_id, canvas_date, canvas_id, status, width, height, target_completion_ms,
-                 expected_participant_count, required_pixel_count, pixel_allowance_interval_ms,
-                 pixel_allowance_max_storage_ms, opened_at`,
-      [
-        room.id,
-        canvasDate,
-        canvas.id,
-        width,
-        height,
-        DEFAULT_COOLDOWN_MS,
-        targetCompletionMs,
-        expectedParticipantCount,
-        requiredPixelCount,
-        pixelAllowanceIntervalMs,
-        pixelAllowanceMaxStorageMs
-      ]
-    );
-    const dailyCanvas = mapDailyCanvas(dailyCanvasResult.rows[0]!);
+    const { canvas, dailyCanvas } = await createOrGetDailyCanvasForRoom(client as DbClient, room, canvasDate);
 
     const rawToken = generateInviteToken();
     const codeHash = hashInviteToken(rawToken, input.inviteSecret);
@@ -528,6 +554,65 @@ async function getRoomTodayByWhere(
   return mapRoomToday(row);
 }
 
+async function getRoomByWhere(
+  db: DbClient,
+  whereClause: 'public_id = $1' | 'id = $1',
+  value: string,
+): Promise<RoomRecord | null> {
+  const result = await db.query<RoomRow>(
+    `SELECT id, public_id, name, privacy, owner_actor_key, default_width, default_height,
+            default_cooldown_ms, target_completion_ms, expected_participant_count,
+            pixel_allowance_interval_ms, pixel_allowance_max_storage_ms, timezone,
+            created_at, updated_at, archived_at
+     FROM rooms
+     WHERE ${whereClause}
+       AND archived_at IS NULL`,
+    [value],
+  );
+
+  return result.rows[0] ? mapRoom(result.rows[0]) : null;
+}
+
+async function ensureRoomTodayByWhere(
+  db: DbClient,
+  whereClause: 'r.public_id = $1' | 'r.id = $1',
+  roomWhereClause: 'public_id = $1' | 'id = $1',
+  value: string,
+  options: { today?: Date } = {},
+): Promise<{
+  room: RoomRecord;
+  dailyCanvas: DailyCanvasRecord;
+  canvas: CanvasRecord;
+} | null> {
+  const existing = await getRoomTodayByWhere(db, whereClause, value);
+  if (existing) {
+    return existing;
+  }
+
+  const room = await getRoomByWhere(db, roomWhereClause, value);
+  if (!room) {
+    return null;
+  }
+
+  const client = 'connect' in db ? await db.connect() : db;
+  const shouldRelease = 'connect' in db;
+
+  try {
+    await client.query('BEGIN');
+    const canvasDate = dateInTimeZone(options.today, room.timezone);
+    const { canvas, dailyCanvas } = await createOrGetDailyCanvasForRoom(client as DbClient, room, canvasDate);
+    await client.query('COMMIT');
+    return { room, dailyCanvas, canvas };
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    if (shouldRelease) {
+      (client as unknown as { release: () => void }).release();
+    }
+  }
+}
+
 export async function getRoomToday(db: DbClient, publicId: string): Promise<{
   room: RoomRecord;
   dailyCanvas: DailyCanvasRecord;
@@ -536,12 +621,36 @@ export async function getRoomToday(db: DbClient, publicId: string): Promise<{
   return getRoomTodayByWhere(db, 'r.public_id = $1', publicId);
 }
 
+export async function ensureRoomToday(
+  db: DbClient,
+  publicId: string,
+  options: { today?: Date } = {},
+): Promise<{
+  room: RoomRecord;
+  dailyCanvas: DailyCanvasRecord;
+  canvas: CanvasRecord;
+} | null> {
+  return ensureRoomTodayByWhere(db, 'r.public_id = $1', 'public_id = $1', publicId, options);
+}
+
 export async function getRoomTodayById(db: DbClient, roomId: string): Promise<{
   room: RoomRecord;
   dailyCanvas: DailyCanvasRecord;
   canvas: CanvasRecord;
 } | null> {
   return getRoomTodayByWhere(db, 'r.id = $1', roomId);
+}
+
+export async function ensureRoomTodayById(
+  db: DbClient,
+  roomId: string,
+  options: { today?: Date } = {},
+): Promise<{
+  room: RoomRecord;
+  dailyCanvas: DailyCanvasRecord;
+  canvas: CanvasRecord;
+} | null> {
+  return ensureRoomTodayByWhere(db, 'r.id = $1', 'id = $1', roomId, options);
 }
 
 export async function getRoomTodayIncludingArchived(db: DbClient, publicId: string): Promise<{

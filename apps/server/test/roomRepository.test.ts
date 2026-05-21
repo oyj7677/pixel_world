@@ -9,6 +9,7 @@ import {
   consumeInviteUse,
   createInvite,
   createRoomWithTodayCanvas,
+  ensureRoomToday,
   ensureRoomMember,
   getRoomToday,
   revokeInvite,
@@ -178,6 +179,34 @@ describe('room repository', () => {
     const loaded = await getRoomToday(pool, created.room.publicId);
 
     expect(loaded?.dailyCanvas.canvasId).toBe(created.dailyCanvas.canvasId);
+  });
+
+  it('creates a new active daily canvas when an existing room is opened on a later local date', async () => {
+    const created = await createRoomWithTodayCanvas(pool, {
+      name: 'Room Repository Later Today Test',
+      ownerActorKey: actorKey('later-today-owner'),
+      publicIdPrefix: TEST_PREFIX,
+      inviteSecret: INVITE_SECRET,
+      timezone: 'Asia/Seoul',
+      today: new Date('2026-05-17T03:30:00.000Z')
+    });
+
+    const ensured = await ensureRoomToday(pool, created.room.publicId, {
+      today: new Date('2026-05-18T03:30:00.000Z')
+    });
+
+    expect(ensured?.room.id).toBe(created.room.id);
+    expect(ensured?.dailyCanvas.canvasDate).toBe('2026-05-18');
+    expect(ensured?.dailyCanvas.canvasId).not.toBe(created.dailyCanvas.canvasId);
+    expect(ensured?.canvas.id).toContain('20260518');
+
+    const rowCounts = await pool.query(
+      `SELECT count(*)::int AS count
+       FROM daily_canvases
+       WHERE room_id = $1`,
+      [created.room.id]
+    );
+    expect(rowCounts.rows[0]).toEqual({ count: 2 });
   });
 
   it('atomically consumes invite uses and records the invite room', async () => {

@@ -18,6 +18,7 @@ import {
   refundPixelAllowance,
 } from '../services/pixelAllowanceService';
 import {
+  ensureRoomToday,
   ensureRoomMember,
   getActiveRoomMember,
   getRoomTodayIncludingArchived,
@@ -320,7 +321,8 @@ async function withTransaction<T>(db: DbClient, callback: (client: DbClient) => 
 }
 
 export async function placeQuickPixel(input: PlaceQuickPixelInput): Promise<QuickPixelResponseDto> {
-  const roomToday = await getRoomTodayIncludingArchived(input.db, input.roomPublicId);
+  const roomToday = (await getRoomTodayIncludingArchived(input.db, input.roomPublicId))
+    ?? (await ensureRoomToday(input.db, input.roomPublicId));
   if (!roomToday) {
     throw new QuickPixelRejectedError('invalid_room', 'Room not found.');
   }

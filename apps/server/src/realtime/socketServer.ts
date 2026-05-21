@@ -45,8 +45,8 @@ import {
   type PixelAllowancePolicySnapshot
 } from '../services/pixelAllowanceService';
 import {
+  ensureRoomToday,
   getActiveRoomMember,
-  getRoomToday,
   getRoomTodayIncludingArchived,
   validateInvite,
   type DailyCanvasRecord
@@ -299,7 +299,7 @@ async function resolveSocketContext(
     throw new Error('room_join_rejected');
   }
 
-  const roomToday = await getRoomToday(app.db, roomPublicId);
+  const roomToday = await ensureRoomToday(app.db, roomPublicId);
   if (!roomToday || (dailyCanvasId && dailyCanvasId !== roomToday.dailyCanvas.id)) {
     throw new Error('room_join_rejected');
   }
