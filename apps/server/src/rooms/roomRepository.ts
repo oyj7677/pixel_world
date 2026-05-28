@@ -6,12 +6,14 @@ import {
   calculateDynamicAllowanceIntervalMs,
   calculateRequiredPixelCount,
   isValidRoomCanvasDimension,
-  normalizeInviteCode
+  normalizeInviteCode,
+  type HexColor,
+  type RoomPixelTemplatePixelDto
 } from '@pixel-world/shared';
 import type { DbClient } from '../db/index';
 import { generateInviteCode, generateInviteToken, hashInviteToken, verifyInviteToken } from './inviteTokens';
 
-type RoomRole = 'owner' | 'admin' | 'member' | 'guest';
+export type RoomRole = 'owner' | 'admin' | 'member' | 'guest';
 type RoomPrivacy = 'private' | 'unlisted';
 type DailyCanvasStatus = 'scheduled' | 'active' | 'sealed' | 'replay_ready';
 
@@ -119,6 +121,20 @@ export interface DeleteExpiredDailyCanvasDataResult {
   pixelEventCount: number;
 }
 
+export interface RoomPixelTemplateRecord {
+  id: string;
+  roomId: string;
+  createdByMemberId: string;
+  name: string;
+  width: number;
+  height: number;
+  defaultColorHex: HexColor;
+  pixels: RoomPixelTemplatePixelDto[];
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+}
+
 export interface CreateInviteInput {
   roomId: string;
   createdByMemberId: string;
@@ -150,6 +166,16 @@ export interface AnalyticsEventInput {
   actorKey?: string | null;
   properties?: Record<string, string | number | boolean | null>;
   occurredAt?: Date;
+}
+
+export interface ReplaceRoomPixelTemplateInput {
+  roomId: string;
+  createdByMemberId: string;
+  name: string;
+  width: number;
+  height: number;
+  defaultColorHex: HexColor;
+  pixels: RoomPixelTemplatePixelDto[];
 }
 
 interface RoomRow {
@@ -218,6 +244,20 @@ interface DailyCanvasRow {
   pixel_allowance_interval_ms: number;
   pixel_allowance_max_storage_ms: number;
   opened_at: Date;
+}
+
+interface RoomPixelTemplateRow {
+  id: string;
+  room_id: string;
+  created_by_member_id: string;
+  name: string;
+  width: number;
+  height: number;
+  default_color_hex: string;
+  pixels: unknown;
+  created_at: Date;
+  updated_at: Date;
+  deleted_at: Date | null;
 }
 
 function mapRoom(row: RoomRow): RoomRecord {
@@ -296,6 +336,44 @@ function mapDailyCanvas(row: DailyCanvasRow): DailyCanvasRecord {
     pixelAllowanceIntervalMs: Number(row.pixel_allowance_interval_ms),
     pixelAllowanceMaxStorageMs: Number(row.pixel_allowance_max_storage_ms),
     openedAt: row.opened_at.toISOString()
+  };
+}
+
+function normalizeTemplatePixels(value: unknown): RoomPixelTemplatePixelDto[] {
+  const parsedValue = typeof value === 'string' ? JSON.parse(value) : value;
+  if (!Array.isArray(parsedValue)) {
+    return [];
+  }
+
+  return parsedValue
+    .filter((pixel): pixel is RoomPixelTemplatePixelDto => {
+      const candidate = pixel as Partial<RoomPixelTemplatePixelDto>;
+      return (
+        Number.isInteger(candidate.x) &&
+        Number.isInteger(candidate.y) &&
+        typeof candidate.colorHex === 'string'
+      );
+    })
+    .map((pixel) => ({
+      x: pixel.x,
+      y: pixel.y,
+      colorHex: pixel.colorHex as HexColor,
+    }));
+}
+
+function mapRoomPixelTemplate(row: RoomPixelTemplateRow): RoomPixelTemplateRecord {
+  return {
+    id: row.id,
+    roomId: row.room_id,
+    createdByMemberId: row.created_by_member_id,
+    name: row.name,
+    width: Number(row.width),
+    height: Number(row.height),
+    defaultColorHex: row.default_color_hex as HexColor,
+    pixels: normalizeTemplatePixels(row.pixels),
+    createdAt: row.created_at.toISOString(),
+    updatedAt: row.updated_at.toISOString(),
+    deletedAt: row.deleted_at?.toISOString() ?? null,
   };
 }
 
@@ -948,6 +1026,71 @@ export async function updateRoomMemberDisplayName(
     [roomId, actorKey, displayName]
   );
   return result.rows[0] ? mapMember(result.rows[0]) : null;
+}
+
+export async function getRoomPixelTemplate(
+  db: DbClient,
+  roomId: string,
+): Promise<RoomPixelTemplateRecord | null> {
+  const result = await db.query<RoomPixelTemplateRow>(
+    `SELECT id, room_id, created_by_member_id, name, width, height, default_color_hex,
+            pixels, created_at, updated_at, deleted_at
+     FROM room_pixel_templates
+     WHERE room_id = $1
+       AND deleted_at IS NULL
+     ORDER BY updated_at DESC
+     LIMIT 1`,
+    [roomId],
+  );
+
+  return result.rows[0] ? mapRoomPixelTemplate(result.rows[0]) : null;
+}
+
+export async function replaceRoomPixelTemplate(
+  db: DbClient,
+  input: ReplaceRoomPixelTemplateInput,
+): Promise<RoomPixelTemplateRecord> {
+  const client = 'connect' in db ? await db.connect() : db;
+  const shouldRelease = 'connect' in db;
+
+  try {
+    await client.query('BEGIN');
+    await client.query('SELECT id FROM rooms WHERE id = $1 FOR UPDATE', [input.roomId]);
+    await client.query(
+      `UPDATE room_pixel_templates
+       SET deleted_at = COALESCE(deleted_at, now()),
+           updated_at = now()
+       WHERE room_id = $1
+         AND deleted_at IS NULL`,
+      [input.roomId],
+    );
+    const result = await client.query<RoomPixelTemplateRow>(
+      `INSERT INTO room_pixel_templates
+         (room_id, created_by_member_id, name, width, height, default_color_hex, pixels)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
+       RETURNING id, room_id, created_by_member_id, name, width, height, default_color_hex,
+                 pixels, created_at, updated_at, deleted_at`,
+      [
+        input.roomId,
+        input.createdByMemberId,
+        input.name,
+        input.width,
+        input.height,
+        input.defaultColorHex,
+        JSON.stringify(input.pixels),
+      ],
+    );
+    await client.query('COMMIT');
+
+    return mapRoomPixelTemplate(result.rows[0]!);
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    if (shouldRelease) {
+      (client as unknown as { release: () => void }).release();
+    }
+  }
 }
 
 export async function appendAnalyticsEvent(db: DbClient, event: AnalyticsEventInput): Promise<void> {

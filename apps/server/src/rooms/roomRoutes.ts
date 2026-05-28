@@ -1,16 +1,26 @@
 import {
   FRIEND_ROOM_DEFAULT_CANVAS_DIMENSION,
+  FRIEND_ROOM_MAX_CANVAS_DIMENSION,
+  FRIEND_ROOM_MIN_CANVAS_DIMENSION,
   FRIEND_ROOM_ROUTES,
+  ROOM_PIXEL_TEMPLATE_MAX_NAME_LENGTH,
   type CreateRoomInviteResponseDto,
   type CreateRoomRequestDto,
   type CreateRoomResponseDto,
+  type HexColor,
   type InviteLandingResponseDto,
   type OptionalDisplayNameRequestDto,
   type OptionalDisplayNameResponseDto,
   type QuickPixelRequestDto,
+  type RoomPixelTemplateDto,
+  type RoomPixelTemplatePixelDto,
+  type RoomPixelTemplateResponseDto,
+  type SaveRoomPixelTemplateRequestDto,
+  type SaveRoomPixelTemplateResponseDto,
   isValidRoomCanvasDimension,
   isValidRoomDisplayName,
   isValidRoomName,
+  normalizeHexColor,
   normalizeInviteCode,
 } from '@pixel-world/shared';
 import type { FastifyInstance, FastifyReply } from 'fastify';
@@ -23,10 +33,13 @@ import {
   ensureRoomMember,
   getActiveRoomMember,
   getRecentInviteMemberByIpHash,
+  getRoomPixelTemplate,
+  replaceRoomPixelTemplate,
   updateRoomMemberDisplayName,
   validateInvite,
   validateInviteByCode,
   type InviteRecord,
+  type RoomPixelTemplateRecord,
 } from './roomRepository';
 import { RedisPixelAllowanceStore } from '../services/pixelAllowanceService';
 import { placeQuickPixel, QuickPixelRejectedError } from './quickPixelService';
@@ -36,6 +49,7 @@ const MAX_DISPLAY_NAME_LENGTH = 40;
 const INVITE_ROUTE_TEMPLATE = '/i/:token';
 const INVITE_CODE_LANDING_ATTEMPT_LIMIT = 30;
 const INVITE_CODE_LANDING_WINDOW_MS = 5 * 60 * 1000;
+const ROOM_PIXEL_TEMPLATE_DEFAULT_NAME = '공유 샘플';
 
 function inviteSecret(app: FastifyInstance): string {
   return app.config.cookieSecret;
@@ -152,6 +166,133 @@ function parseQuickPixelBody(body: unknown): QuickPixelRequestDto | null {
     ...(payload.suggestedCoordinate ? { suggestedCoordinate: payload.suggestedCoordinate } : {}),
     ...(payload.suggestedColorHex ? { suggestedColorHex: payload.suggestedColorHex } : {}),
     ...(payload.displayName ? { displayName: payload.displayName.trim() } : {}),
+  };
+}
+
+function compactTemplatePixels(
+  pixels: RoomPixelTemplatePixelDto[],
+  defaultColorHex: HexColor,
+): RoomPixelTemplatePixelDto[] {
+  const pixelsByCoordinate = new Map<string, RoomPixelTemplatePixelDto>();
+
+  for (const pixel of pixels) {
+    const key = `${pixel.x}:${pixel.y}`;
+    if (pixel.colorHex === defaultColorHex) {
+      pixelsByCoordinate.delete(key);
+      continue;
+    }
+
+    pixelsByCoordinate.set(key, pixel);
+  }
+
+  return [...pixelsByCoordinate.values()].sort((a, b) => (a.y - b.y) || (a.x - b.x));
+}
+
+function parseRoomPixelTemplateBody(body: unknown): SaveRoomPixelTemplateRequestDto | null {
+  if (!body || typeof body !== 'object') {
+    return null;
+  }
+
+  const payload = body as {
+    name?: unknown;
+    width?: unknown;
+    height?: unknown;
+    defaultColorHex?: unknown;
+    pixels?: unknown;
+  };
+  if (
+    typeof payload.width !== 'number' ||
+    typeof payload.height !== 'number' ||
+    !Number.isInteger(payload.width) ||
+    !Number.isInteger(payload.height)
+  ) {
+    return null;
+  }
+  const width = payload.width;
+  const height = payload.height;
+  if (
+    width < FRIEND_ROOM_MIN_CANVAS_DIMENSION ||
+    width > FRIEND_ROOM_MAX_CANVAS_DIMENSION ||
+    height < FRIEND_ROOM_MIN_CANVAS_DIMENSION ||
+    height > FRIEND_ROOM_MAX_CANVAS_DIMENSION
+  ) {
+    return null;
+  }
+  if (typeof payload.defaultColorHex !== 'string') {
+    return null;
+  }
+
+  const defaultColorHex = normalizeHexColor(payload.defaultColorHex);
+  if (!defaultColorHex) {
+    return null;
+  }
+  if (!Array.isArray(payload.pixels) || payload.pixels.length > width * height) {
+    return null;
+  }
+
+  const normalizedPixels: RoomPixelTemplatePixelDto[] = [];
+  for (const pixel of payload.pixels) {
+    if (!pixel || typeof pixel !== 'object') {
+      return null;
+    }
+
+    const candidate = pixel as Partial<RoomPixelTemplatePixelDto>;
+    const x = candidate.x;
+    const y = candidate.y;
+    if (
+      typeof x !== 'number' ||
+      typeof y !== 'number' ||
+      !Number.isInteger(x) ||
+      !Number.isInteger(y) ||
+      typeof candidate.colorHex !== 'string' ||
+      x < 0 ||
+      x >= width ||
+      y < 0 ||
+      y >= height
+    ) {
+      return null;
+    }
+
+    const colorHex = normalizeHexColor(candidate.colorHex);
+    if (!colorHex) {
+      return null;
+    }
+
+    normalizedPixels.push({
+      x,
+      y,
+      colorHex,
+    });
+  }
+
+  const rawName = typeof payload.name === 'string' ? payload.name.trim() : '';
+  if (rawName.length > ROOM_PIXEL_TEMPLATE_MAX_NAME_LENGTH) {
+    return null;
+  }
+
+  return {
+    name: rawName || ROOM_PIXEL_TEMPLATE_DEFAULT_NAME,
+    width,
+    height,
+    defaultColorHex,
+    pixels: compactTemplatePixels(normalizedPixels, defaultColorHex),
+  };
+}
+
+function toRoomPixelTemplateDto(
+  template: RoomPixelTemplateRecord,
+  roomPublicId: string,
+): RoomPixelTemplateDto {
+  return {
+    id: template.id,
+    roomPublicId,
+    name: template.name,
+    width: template.width,
+    height: template.height,
+    defaultColorHex: template.defaultColorHex,
+    pixels: template.pixels,
+    createdAt: template.createdAt,
+    updatedAt: template.updatedAt,
   };
 }
 
@@ -333,8 +474,96 @@ export async function registerRoomRoutes(app: FastifyInstance): Promise<void> {
         roomName: roomToday.room.name,
         todayDailyCanvasId: roomToday.dailyCanvas.id,
         canvasId: roomToday.canvas.id,
-        canvasSize: { width: roomToday.canvas.width, height: roomToday.canvas.height }
+        canvasSize: { width: roomToday.canvas.width, height: roomToday.canvas.height },
+        memberRole: member.role,
       };
+    },
+  );
+
+  app.get<{ Params: { roomPublicId: string }; Querystring: { inviteToken?: string; inviteCode?: string } }>(
+    '/api/rooms/:roomPublicId/pixel-template',
+    async (request, reply) => {
+      const roomToday = await ensureRoomToday(app.db, request.params.roomPublicId);
+      if (!roomToday) {
+        return reply.code(404).send({ error: 'room_not_found' });
+      }
+
+      const actorKey = getOrSetRoomActorKey(app, request, reply);
+      const member = await getActiveRoomMember(app.db, roomToday.room.id, actorKey)
+        ?? await ensureMemberFromInviteCredential(app, {
+          roomId: roomToday.room.id,
+          actorKey,
+          inviteToken: request.query.inviteToken,
+          inviteCode: request.query.inviteCode,
+        });
+      if (!member) {
+        return reply.code(404).send({ error: 'room_membership_required' });
+      }
+
+      const template = await getRoomPixelTemplate(app.db, roomToday.room.id);
+      const response: RoomPixelTemplateResponseDto = {
+        template: template ? toRoomPixelTemplateDto(template, roomToday.room.publicId) : null,
+      };
+
+      return response;
+    },
+  );
+
+  app.put<{
+    Params: { roomPublicId: string };
+    Querystring: { inviteToken?: string; inviteCode?: string };
+    Body: SaveRoomPixelTemplateRequestDto;
+  }>(
+    '/api/rooms/:roomPublicId/pixel-template',
+    async (request, reply) => {
+      const body = parseRoomPixelTemplateBody(request.body);
+      if (!body) {
+        return reply.code(400).send({ error: 'invalid_pixel_template' });
+      }
+
+      const roomToday = await ensureRoomToday(app.db, request.params.roomPublicId);
+      if (!roomToday) {
+        return reply.code(404).send({ error: 'room_not_found' });
+      }
+
+      const actorKey = getOrSetRoomActorKey(app, request, reply);
+      const member = await getActiveRoomMember(app.db, roomToday.room.id, actorKey)
+        ?? await ensureMemberFromInviteCredential(app, {
+          roomId: roomToday.room.id,
+          actorKey,
+          inviteToken: request.query.inviteToken,
+          inviteCode: request.query.inviteCode,
+        });
+      if (!member) {
+        return reply.code(404).send({ error: 'room_membership_required' });
+      }
+      if (member.role !== 'owner') {
+        return reply.code(403).send({ error: 'room_owner_required' });
+      }
+
+      const template = await replaceRoomPixelTemplate(app.db, {
+        roomId: roomToday.room.id,
+        createdByMemberId: member.id,
+        name: body.name ?? ROOM_PIXEL_TEMPLATE_DEFAULT_NAME,
+        width: body.width,
+        height: body.height,
+        defaultColorHex: body.defaultColorHex,
+        pixels: body.pixels,
+      });
+      const response: SaveRoomPixelTemplateResponseDto = {
+        template: toRoomPixelTemplateDto(template, roomToday.room.publicId),
+      };
+
+      try {
+        app.pixelSocketServer?.broadcastRoomPixelTemplateUpdated?.(roomToday.canvas.id, {
+          roomPublicId: roomToday.room.publicId,
+          template: response.template,
+        });
+      } catch (error) {
+        app.log.error({ err: error }, 'Failed to broadcast room pixel template update');
+      }
+
+      return response;
     },
   );
 

@@ -20,7 +20,7 @@ export async function buildApp(config: ServerConfig) {
   await app.register(cors, {
     origin: config.webOrigin,
     credentials: true,
-    methods: ['GET', 'POST', 'PATCH', 'OPTIONS']
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'OPTIONS']
   });
 
   await app.register(cookie, {

@@ -5,7 +5,11 @@ import type {
   InviteLandingResponseDto,
   OptionalDisplayNameResponseDto,
   QuickPixelRequestDto,
-  QuickPixelResponseDto
+  QuickPixelResponseDto,
+  RoomMemberRole,
+  RoomPixelTemplateResponseDto,
+  SaveRoomPixelTemplateRequestDto,
+  SaveRoomPixelTemplateResponseDto
 } from '@pixel-world/shared';
 
 export interface RoomTodayResponseDto {
@@ -14,6 +18,7 @@ export interface RoomTodayResponseDto {
   todayDailyCanvasId: string;
   canvasId: string;
   canvasSize: { width: number; height: number };
+  memberRole: RoomMemberRole;
 }
 
 const API_ORIGIN = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
@@ -167,4 +172,23 @@ export async function getRoomToday(roomPublicId: string, credential?: string | I
   }
 
   return readJson<RoomTodayResponseDto>(response);
+}
+
+export async function getRoomPixelTemplate(
+  roomPublicId: string,
+  credential?: string | InviteCredential
+): Promise<RoomPixelTemplateResponseDto> {
+  return requestJson<RoomPixelTemplateResponseDto>(
+    withInviteCredential(`/api/rooms/${encodeURIComponent(roomPublicId)}/pixel-template`, credential)
+  );
+}
+
+export function saveRoomPixelTemplate(
+  roomPublicId: string,
+  payload: SaveRoomPixelTemplateRequestDto
+): Promise<SaveRoomPixelTemplateResponseDto> {
+  return requestJson<SaveRoomPixelTemplateResponseDto>(`/api/rooms/${encodeURIComponent(roomPublicId)}/pixel-template`, {
+    method: 'PUT',
+    body: JSON.stringify(payload)
+  });
 }

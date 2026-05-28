@@ -34,6 +34,9 @@ export const FRIEND_ROOM_MAX_TARGET_COMPLETION_MS = 24 * 60 * 60 * 1000 - 1;
 export const FRIEND_ROOM_MAX_NAME_LENGTH = 80;
 export const FRIEND_ROOM_MAX_DISPLAY_NAME_LENGTH = 40;
 export const FRIEND_ROOM_INVITE_CODE_LENGTH = 4;
+export const ROOM_PIXEL_TEMPLATE_MAX_NAME_LENGTH = 80;
+
+export type RoomMemberRole = 'owner' | 'admin' | 'member' | 'guest';
 
 export const FRIEND_ROOM_ROUTES = {
   room: (publicId: string): string => `/r/${publicId}`,
@@ -135,6 +138,40 @@ export interface OptionalDisplayNameRequestDto {
 export interface OptionalDisplayNameResponseDto {
   roomPublicId: string;
   displayName: string | null;
+}
+
+export interface RoomPixelTemplatePixelDto {
+  x: number;
+  y: number;
+  colorHex: HexColor;
+}
+
+export interface RoomPixelTemplateDto {
+  id: string;
+  roomPublicId: string;
+  name: string;
+  width: number;
+  height: number;
+  defaultColorHex: HexColor;
+  pixels: RoomPixelTemplatePixelDto[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RoomPixelTemplateResponseDto {
+  template: RoomPixelTemplateDto | null;
+}
+
+export interface SaveRoomPixelTemplateRequestDto {
+  name?: string;
+  width: number;
+  height: number;
+  defaultColorHex: HexColor;
+  pixels: RoomPixelTemplatePixelDto[];
+}
+
+export interface SaveRoomPixelTemplateResponseDto {
+  template: RoomPixelTemplateDto;
 }
 
 export const privacySafeAnalyticsEventNames = [

@@ -3,9 +3,9 @@ import '@testing-library/jest-dom/vitest';
 import { createElement } from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { CanvasSnapshotPayload } from '@pixel-world/shared';
+import type { CanvasSnapshotPayload, SaveRoomPixelTemplateRequestDto } from '@pixel-world/shared';
 import { RoomCanvasShell } from '../src/components/RoomCanvasShell';
-import { createRoomInvite, getRoomToday } from '../src/lib/roomApi';
+import { createRoomInvite, getRoomPixelTemplate, getRoomToday, saveRoomPixelTemplate } from '../src/lib/roomApi';
 import { createPixelSocket } from '../src/lib/socketClient';
 
 vi.mock('../src/lib/roomApi', () => ({
@@ -19,7 +19,22 @@ vi.mock('../src/lib/roomApi', () => ({
     roomName: '금요일 친구들',
     todayDailyCanvasId: 'daily-1',
     canvasId: 'room-canvas-1',
-    canvasSize: { width: 2, height: 2 }
+    canvasSize: { width: 2, height: 2 },
+    memberRole: 'owner'
+  })),
+  getRoomPixelTemplate: vi.fn(async () => ({ template: null })),
+  saveRoomPixelTemplate: vi.fn(async (_roomPublicId: string, payload: SaveRoomPixelTemplateRequestDto) => ({
+    template: {
+      id: 'template-saved',
+      roomPublicId: 'room_public_123',
+      name: payload.name,
+      width: payload.width,
+      height: payload.height,
+      defaultColorHex: payload.defaultColorHex,
+      pixels: payload.pixels,
+      createdAt: '2026-05-28T00:00:00.000Z',
+      updatedAt: '2026-05-28T00:00:00.000Z'
+    }
   }))
 }));
 
@@ -103,6 +118,13 @@ describe('RoomCanvasShell', () => {
       'href',
       'https://open.kakao.com/o/sVe6cZvi'
     );
+
+    const sharedSample = screen.getByRole('region', { name: '공유 샘플' });
+    const colorTools = screen.getByRole('region', { name: '색상 도구' });
+    const sampleGallery = screen.getByRole('region', { name: '샘플 화면' });
+    expect(sharedSample.compareDocumentPosition(colorTools) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(colorTools.compareDocumentPosition(sampleGallery) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(sampleGallery.compareDocumentPosition(quickActions) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('shows saved pixel actions without urgent expiry copy', async () => {
@@ -114,8 +136,63 @@ describe('RoomCanvasShell', () => {
 
     expect(await screen.findByText('3개 저장됨')).toBeVisible();
     expect(screen.getByText('이 프로젝트 속도에 맞춰 준비됨')).toBeVisible();
+    expect(screen.getByRole('heading', { name: '샘플 화면' })).toBeVisible();
+    expect(screen.getByRole('img', { name: '하트 샘플 화면' })).toBeVisible();
     expect(screen.queryByText(/사용 전/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/expires?/i)).not.toBeInTheDocument();
+  });
+
+  it('registers a preset sample as the shared sample when no shared sample exists', async () => {
+    render(createElement(RoomCanvasShell, { roomPublicId: 'room_public_123' }));
+
+    await waitFor(() => expect(socketHandlers.has('connect')).toBe(true));
+    emitSocket('connect', undefined);
+    emitSocket('canvasSnapshot', snapshot({
+      width: 48,
+      height: 48,
+      pixelAllowance: {
+        ...snapshot().pixelAllowance,
+        requiredPixelCount: 48 * 48,
+      }
+    }));
+
+    fireEvent.click(await screen.findByRole('button', { name: '하트 샘플 화면 공유 샘플로 등록' }));
+
+    await waitFor(() => expect(saveRoomPixelTemplate).toHaveBeenCalledTimes(1));
+    expect(saveRoomPixelTemplate).toHaveBeenCalledWith('room_public_123', expect.objectContaining({
+      name: '하트 샘플',
+      width: 48,
+      height: 48,
+      defaultColorHex: '#FFFFFF',
+    }));
+    expect(await screen.findByRole('img', { name: '하트 샘플 공유 픽셀 샘플' })).toBeVisible();
+    expect(screen.queryByRole('heading', { name: '샘플 화면' })).not.toBeInTheDocument();
+  });
+
+  it('updates the shared pixel template from realtime room events', async () => {
+    render(createElement(RoomCanvasShell, { roomPublicId: 'room_public_123' }));
+
+    await waitFor(() => expect(socketHandlers.has('connect')).toBe(true));
+    emitSocket('connect', undefined);
+    emitSocket('canvasSnapshot', snapshot());
+    emitSocket('roomPixelTemplateUpdated', {
+      roomPublicId: 'room_public_123',
+      template: {
+        id: 'template-1',
+        roomPublicId: 'room_public_123',
+        name: '꽃',
+        width: 2,
+        height: 2,
+        defaultColorHex: '#FFFFFF',
+        pixels: [{ x: 1, y: 0, colorHex: '#FB7185' }],
+        createdAt: '2026-05-28T00:00:00.000Z',
+        updatedAt: '2026-05-28T00:00:00.000Z'
+      }
+    });
+
+    expect(await screen.findByRole('img', { name: '꽃 공유 픽셀 샘플' })).toBeVisible();
+    expect(screen.getByRole('button', { name: '크게 보기' })).toBeVisible();
+    expect(screen.queryByRole('heading', { name: '샘플 화면' })).not.toBeInTheDocument();
   });
 
   it('lets room members place pixels even before they have personal recent activity', async () => {

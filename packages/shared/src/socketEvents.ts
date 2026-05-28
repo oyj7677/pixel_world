@@ -1,4 +1,5 @@
 import type { HexColor } from './colors';
+import type { RoomPixelTemplateDto } from './roomContracts';
 
 export interface PixelRecord {
   roomPublicId?: string;
@@ -73,6 +74,11 @@ export interface PresenceUpdatedPayload {
   onlineCount: number;
 }
 
+export interface RoomPixelTemplateUpdatedPayload {
+  roomPublicId: string;
+  template: RoomPixelTemplateDto | null;
+}
+
 export interface RecentEventsUpdatedPayload {
   roomPublicId?: string;
   dailyCanvasId?: string;
@@ -98,6 +104,7 @@ export interface ServerToClientEvents {
   recentEventsUpdated: (payload: RecentEventsUpdatedPayload) => void;
   roomRecentEventsUpdated: (payload: RecentEventsUpdatedPayload) => void;
   myRecentEventsUpdated: (payload: RecentEventsUpdatedPayload) => void;
+  roomPixelTemplateUpdated: (payload: RoomPixelTemplateUpdatedPayload) => void;
   cooldownUpdated: (payload: CooldownUpdatedPayload) => void;
   placementRejected: (payload: PlacementRejectedPayload) => void;
 }

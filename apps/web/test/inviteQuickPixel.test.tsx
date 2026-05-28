@@ -70,7 +70,7 @@ describe('InviteQuickPixel', () => {
         displayName: '준호'
       });
     });
-    expect(screen.getByText('픽셀을 16,16에 남겼어요.')).toBeVisible();
+    expect(await screen.findByText('픽셀을 16,16에 남겼어요.')).toBeVisible();
     expect(screen.queryByRole('heading', { name: '이름을 남길까요? 선택 사항이에요.' })).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: '방으로 들어가기' })).toHaveAttribute(
       'href',

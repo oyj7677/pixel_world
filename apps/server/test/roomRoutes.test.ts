@@ -1,7 +1,8 @@
 import {
   FRIEND_ROOM_CANVAS_SIZE,
   type CreateRoomInviteResponseDto,
-  type QuickPixelResponseDto
+  type QuickPixelResponseDto,
+  type RoomPixelTemplateUpdatedPayload
 } from '@pixel-world/shared';
 import {
   afterAll,
@@ -76,6 +77,11 @@ async function cleanupRoomRouteTestData(): Promise<void> {
   );
   await pool.query(
     `DELETE FROM room_pixel_allowances
+     WHERE room_id IN (SELECT id FROM rooms WHERE public_id LIKE $1 OR name LIKE $2)`,
+    [`${TEST_PREFIX}%`, `${TEST_PREFIX}%`],
+  );
+  await pool.query(
+    `DELETE FROM room_pixel_templates
      WHERE room_id IN (SELECT id FROM rooms WHERE public_id LIKE $1 OR name LIKE $2)`,
     [`${TEST_PREFIX}%`, `${TEST_PREFIX}%`],
   );
@@ -265,7 +271,101 @@ describe('room routes', () => {
       todayDailyCanvasId: body.todayDailyCanvasId,
       canvasId: body.canvasId,
       canvasSize: FRIEND_ROOM_CANVAS_SIZE,
+      memberRole: 'owner',
     });
+  });
+
+  it('lets a room owner save and load a shared pixel template', async () => {
+    const { body, cookie } = await createRoom(`${TEST_PREFIX} pixel template room`);
+    const handoffs: RoomPixelTemplateUpdatedPayload[] = [];
+    const handoffCanvasIds: string[] = [];
+    app!.pixelSocketServer = {
+      broadcastRoomPixelTemplateUpdated: (canvasId: string, payload: RoomPixelTemplateUpdatedPayload) => {
+        handoffCanvasIds.push(canvasId);
+        handoffs.push(payload);
+      },
+    } as unknown as PixelSocketServer;
+
+    const response = await app!.inject({
+      method: 'PUT',
+      url: `/api/rooms/${body.roomPublicId}/pixel-template`,
+      headers: { cookie },
+      payload: {
+        name: '테스트 로고.png',
+        width: 48,
+        height: 48,
+        defaultColorHex: '#ffffff',
+        pixels: [
+          { x: 1, y: 2, colorHex: '#22c55e' },
+          { x: 3, y: 4, colorHex: '#38bdf8' },
+        ],
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const saved = response.json();
+    expect(saved).toEqual({
+      template: {
+        id: expect.any(String),
+        roomPublicId: body.roomPublicId,
+        name: '테스트 로고.png',
+        width: 48,
+        height: 48,
+        defaultColorHex: '#FFFFFF',
+        pixels: [
+          { x: 1, y: 2, colorHex: '#22C55E' },
+          { x: 3, y: 4, colorHex: '#38BDF8' },
+        ],
+        createdAt: expect.any(String),
+        updatedAt: expect.any(String),
+      },
+    });
+    expect(response.body).not.toContain('data:image');
+    expect(handoffCanvasIds).toEqual([body.canvasId]);
+    expect(handoffs).toEqual([
+      {
+        roomPublicId: body.roomPublicId,
+        template: saved.template,
+      },
+    ]);
+
+    const loaded = await app!.inject({
+      method: 'GET',
+      url: `/api/rooms/${body.roomPublicId}/pixel-template`,
+      headers: { cookie },
+    });
+
+    expect(loaded.statusCode).toBe(200);
+    expect(loaded.json()).toEqual(saved);
+  });
+
+  it('does not let invited guests replace the shared pixel template', async () => {
+    const { body } = await createRoom(`${TEST_PREFIX} guest pixel template room`);
+    const inviteToken = new URL(body.inviteUrl).pathname.split('/').pop()!;
+
+    const guestToday = await app!.inject({
+      method: 'GET',
+      url: `/api/rooms/${body.roomPublicId}/today?inviteToken=${encodeURIComponent(inviteToken)}`,
+      headers: { 'x-forwarded-for': '198.51.100.94' },
+    });
+    expect(guestToday.statusCode).toBe(200);
+    const guestCookie = actorCookieFrom(guestToday);
+
+    const response = await app!.inject({
+      method: 'PUT',
+      url: `/api/rooms/${body.roomPublicId}/pixel-template`,
+      headers: { cookie: guestCookie },
+      payload: {
+        name: '손님 샘플',
+        width: 48,
+        height: 48,
+        defaultColorHex: '#FFFFFF',
+        pixels: [{ x: 0, y: 0, colorHex: '#22C55E' }],
+      },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toEqual({ error: 'room_owner_required' });
   });
 
   it('opens an older invite by creating today’s room canvas before the invite recipient joins', async () => {
@@ -318,6 +418,7 @@ describe('room routes', () => {
       todayDailyCanvasId: landingBody.todayDailyCanvasId,
       canvasId: landingBody.canvasId,
       canvasSize: FRIEND_ROOM_CANVAS_SIZE,
+      memberRole: 'guest',
     });
   });
 
@@ -383,6 +484,7 @@ describe('room routes', () => {
       todayDailyCanvasId: body.todayDailyCanvasId,
       canvasId: body.canvasId,
       canvasSize: FRIEND_ROOM_CANVAS_SIZE,
+      memberRole: 'guest',
     });
 
     const withInviteCode = await app!.inject({
@@ -397,6 +499,7 @@ describe('room routes', () => {
       todayDailyCanvasId: body.todayDailyCanvasId,
       canvasId: body.canvasId,
       canvasSize: FRIEND_ROOM_CANVAS_SIZE,
+      memberRole: 'guest',
     });
 
     const freshInvite = await app!.inject({

@@ -38,6 +38,7 @@ room creation -> invite link -> invite open -> anonymous/guest Quick Pixel -> op
 | 08 | `08-saved-pixel-allowance-design.md` | Dynamic saved pixel allowance design | Accepted |
 | 09 | `09-dynamic-project-pacing-test-spec.md` | Test spec for dynamic pacing behavior | Accepted |
 | 10 | `10-friend-room-development-readiness.md` | Development readiness checklist and handoff | Current gate |
+| 11 | `11-image-to-pixel-import-tech-design.md` | Client-side uploaded image to pixel sample design | Proposed |
 
 Related implementation-facing artifacts:
 

@@ -47,6 +47,11 @@ async function cleanupRoomRepositoryTestData(): Promise<void> {
     [`${TEST_PREFIX}%`]
   );
   await pool.query(
+    `DELETE FROM room_pixel_templates
+     WHERE room_id IN (SELECT id FROM rooms WHERE public_id LIKE $1 OR owner_actor_key LIKE $1)`,
+    [`${TEST_PREFIX}%`]
+  );
+  await pool.query(
     `DELETE FROM room_invites
      WHERE room_id IN (SELECT id FROM rooms WHERE public_id LIKE $1 OR owner_actor_key LIKE $1)`,
     [`${TEST_PREFIX}%`]

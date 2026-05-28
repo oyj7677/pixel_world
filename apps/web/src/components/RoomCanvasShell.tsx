@@ -13,15 +13,27 @@ import {
   type PixelUpdatedPayload,
   type PlacementRejectedPayload,
   type PresenceUpdatedPayload,
+  type RoomPixelTemplateDto,
+  type RoomPixelTemplateUpdatedPayload,
+  type SaveRoomPixelTemplateRequestDto,
   normalizeInviteCode
 } from '@pixel-world/shared';
 import { CanvasBoard } from './CanvasBoard';
 import { ColorTools } from './ColorTools';
 import { DailyResetNotice } from './DailyResetNotice';
 import { FeedbackLink } from './FeedbackLink';
+import { PixelSampleGallery } from './PixelSampleGallery';
+import { RoomPixelTemplatePanel } from './RoomPixelTemplatePanel';
 import { StatusBar } from './StatusBar';
 import { downloadCanvasImage } from '../lib/canvasImageDownload';
-import { createRoomInvite, getRoomToday, type InviteCredential, type RoomTodayResponseDto } from '../lib/roomApi';
+import {
+  createRoomInvite,
+  getRoomPixelTemplate,
+  getRoomToday,
+  saveRoomPixelTemplate,
+  type InviteCredential,
+  type RoomTodayResponseDto
+} from '../lib/roomApi';
 import { createPixelSocket, type PixelSocket } from '../lib/socketClient';
 
 interface RoomCanvasShellProps {
@@ -137,6 +149,7 @@ export function RoomCanvasShell({ roomPublicId, inviteToken, inviteCode }: RoomC
   const [canvasWidth, setCanvasWidth] = useState(0);
   const [canvasHeight, setCanvasHeight] = useState(0);
   const [defaultColorHex, setDefaultColorHex] = useState<HexColor>(DEFAULT_CANVAS_COLOR);
+  const [roomPixelTemplate, setRoomPixelTemplate] = useState<RoomPixelTemplateDto | null>(null);
   const [visibleInviteCode, setVisibleInviteCode] = useState(() => normalizeVisibleInviteCode(inviteCode));
   const [isPreparingInviteCode, setIsPreparingInviteCode] = useState(false);
   const [inviteCodeProvisionFailed, setInviteCodeProvisionFailed] = useState(false);
@@ -144,6 +157,7 @@ export function RoomCanvasShell({ roomPublicId, inviteToken, inviteCode }: RoomC
   const [snackbarError, setSnackbarError] = useState<string | null>(null);
   const [isCreatingInvite, setIsCreatingInvite] = useState(false);
   const [isActionMenuOpen, setIsActionMenuOpen] = useState(false);
+  const [isSavingPresetSample, setIsSavingPresetSample] = useState(false);
   const socketRef = useRef<PixelSocket | null>(null);
   const pixelAllowanceRef = useRef<PixelAllowanceStatePayload | null>(null);
   const todayRef = useRef<RoomTodayResponseDto | null>(null);
@@ -230,6 +244,19 @@ export function RoomCanvasShell({ roomPublicId, inviteToken, inviteCode }: RoomC
         todayRef.current = roomToday;
         setCanvasWidth(roomToday.canvasSize.width);
         setCanvasHeight(roomToday.canvasSize.height);
+        setRoomPixelTemplate(null);
+
+        void getRoomPixelTemplate(roomToday.roomPublicId, inviteCredential)
+          .then((response) => {
+            if (!cancelled) {
+              setRoomPixelTemplate(response.template);
+            }
+          })
+          .catch(() => {
+            if (!cancelled) {
+              setRoomPixelTemplate(null);
+            }
+          });
 
         socket = createPixelSocket({
           roomPublicId: roomToday.roomPublicId,
@@ -271,6 +298,11 @@ export function RoomCanvasShell({ roomPublicId, inviteToken, inviteCode }: RoomC
         });
         socket.on('presenceUpdated', ({ onlineCount: nextOnlineCount }: PresenceUpdatedPayload) => {
           setOnlineCount(nextOnlineCount);
+        });
+        socket.on('roomPixelTemplateUpdated', (payload: RoomPixelTemplateUpdatedPayload) => {
+          if (payload.roomPublicId === todayRef.current?.roomPublicId) {
+            setRoomPixelTemplate(payload.template);
+          }
         });
         socket.on('cooldownUpdated', (update: CooldownUpdatedPayload) => {
           pixelAllowanceRef.current = update;
@@ -392,6 +424,35 @@ export function RoomCanvasShell({ roomPublicId, inviteToken, inviteCode }: RoomC
     }
   }, [inviteCode, inviteToken, isCreatingInvite, roomPublicId, visibleInviteCode]);
 
+  const handlePresetSampleSelect = useCallback(
+    async (templatePayload: SaveRoomPixelTemplateRequestDto) => {
+      if (!today || roomPixelTemplate || isSavingPresetSample) {
+        return;
+      }
+
+      if (today.memberRole !== 'owner') {
+        setSnackbarMessage(null);
+        setSnackbarError('방장만 공유 샘플을 등록할 수 있어요.');
+        return;
+      }
+
+      setIsSavingPresetSample(true);
+      setSnackbarMessage(null);
+      setSnackbarError(null);
+
+      try {
+        const response = await saveRoomPixelTemplate(today.roomPublicId, templatePayload);
+        setRoomPixelTemplate(response.template);
+        setSnackbarMessage(`${templatePayload.name}을 공유 샘플로 등록했어요.`);
+      } catch {
+        setSnackbarError('샘플 화면을 공유 샘플로 등록하지 못했어요.');
+      } finally {
+        setIsSavingPresetSample(false);
+      }
+    },
+    [isSavingPresetSample, roomPixelTemplate, today]
+  );
+
   if (notFound) {
     return (
       <main className="page-shell invite-shell">
@@ -473,6 +534,35 @@ export function RoomCanvasShell({ roomPublicId, inviteToken, inviteCode }: RoomC
         </section>
 
         <aside className="side-stack" aria-label="방 캔버스 도구">
+          <RoomPixelTemplatePanel
+            roomPublicId={today.roomPublicId}
+            canvasWidth={canvasWidth}
+            canvasHeight={canvasHeight}
+            defaultColorHex={defaultColorHex}
+            template={roomPixelTemplate}
+            isOwner={today.memberRole === 'owner'}
+            onTemplateSaved={setRoomPixelTemplate}
+            onStatus={(message) => {
+              setSnackbarError(null);
+              setSnackbarMessage(message);
+            }}
+            onError={(message) => {
+              setSnackbarMessage(null);
+              setSnackbarError(message);
+            }}
+          />
+          <section aria-label="방 직접 칠하기 도구">
+            <ColorTools selectedColor={selectedColor} eyedropperColor={eyedropperColor} onColorChange={setSelectedColor} />
+          </section>
+          {!roomPixelTemplate ? (
+            <PixelSampleGallery
+              canvasWidth={canvasWidth}
+              canvasHeight={canvasHeight}
+              defaultColorHex={defaultColorHex}
+              isSaving={isSavingPresetSample}
+              onSampleSelect={handlePresetSampleSelect}
+            />
+          ) : null}
           <aside
             className={`canvas-action-menu${isActionMenuOpen ? ' canvas-action-menu--open' : ''}`}
             aria-label="방 빠른 작업"
@@ -503,9 +593,6 @@ export function RoomCanvasShell({ roomPublicId, inviteToken, inviteCode }: RoomC
               <FeedbackLink className="secondary-link canvas-feedback-link">피드백 보내기</FeedbackLink>
             </div>
           </aside>
-          <section aria-label="방 직접 칠하기 도구">
-            <ColorTools selectedColor={selectedColor} eyedropperColor={eyedropperColor} onColorChange={setSelectedColor} />
-          </section>
         </aside>
       </div>
     </main>

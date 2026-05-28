@@ -47,6 +47,16 @@ select {
   font-size: 16px;
 }
 
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .page-shell {
   width: min(1120px, calc(100% - 32px));
   min-height: 100vh;
@@ -675,6 +685,210 @@ body:has(.room-shell) > .feedback-entry {
   z-index: 1;
   outline: 2px solid var(--accent);
   outline-offset: -1px;
+}
+
+.pixel-sample-gallery {
+  display: grid;
+  gap: 12px;
+}
+
+.pixel-sample-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.pixel-sample {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+  margin: 0;
+}
+
+.pixel-sample-button {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  gap: 8px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  text-align: inherit;
+}
+
+.pixel-sample-button:disabled {
+  cursor: wait;
+  opacity: 0.72;
+}
+
+.pixel-sample-button:focus-visible {
+  outline: 0;
+}
+
+.pixel-sample-button:focus-visible .pixel-sample-grid {
+  border-color: var(--accent);
+  outline: 2px solid rgba(125, 211, 252, 0.55);
+  outline-offset: 2px;
+}
+
+.pixel-sample-grid {
+  display: grid;
+  width: 100%;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border: 1px solid rgba(71, 85, 105, 0.72);
+  border-radius: 10px;
+  background: var(--line);
+  gap: 1px;
+}
+
+.pixel-sample-cell {
+  display: block;
+  aspect-ratio: 1;
+  min-width: 0;
+}
+
+.pixel-sample figcaption,
+.pixel-sample-caption {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pixel-template-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.pixel-template-panel__header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.pixel-template-panel__header div {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.pixel-template-panel__header span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pixel-template-panel__small-action {
+  min-height: 34px;
+  padding: 0 12px;
+  font-size: 0.76rem;
+  white-space: nowrap;
+}
+
+.pixel-template-preview {
+  display: grid;
+  width: 100%;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border: 1px solid rgba(125, 211, 252, 0.48);
+  border-radius: 12px;
+  background: var(--line);
+  gap: 1px;
+}
+
+.pixel-template-preview--large {
+  width: min(76svh, 100%);
+  max-width: min(680px, 100%);
+  margin: 0 auto;
+}
+
+.pixel-template-cell {
+  display: block;
+  min-width: 0;
+  aspect-ratio: 1;
+}
+
+.pixel-template-empty {
+  display: grid;
+  min-height: 120px;
+  place-items: center;
+  border: 1px dashed rgba(203, 213, 225, 0.36);
+  border-radius: 12px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.pixel-template-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.pixel-template-actions .secondary-link,
+.pixel-template-file-button {
+  width: 100%;
+  min-height: 42px;
+  padding: 0 10px;
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+.pixel-template-file-button--busy {
+  opacity: 0.72;
+}
+
+.pixel-template-message {
+  margin: 0;
+  color: var(--accent);
+  font-size: 0.8rem;
+}
+
+.pixel-template-message--error {
+  color: var(--danger);
+}
+
+.pixel-template-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  background: rgba(15, 23, 42, 0.72);
+  padding: 16px;
+}
+
+.pixel-template-modal__surface {
+  display: grid;
+  width: min(760px, 100%);
+  max-height: min(92svh, 860px);
+  gap: 14px;
+  overflow: auto;
+  border: 1px solid rgba(125, 211, 252, 0.54);
+  border-radius: 18px;
+  background: rgba(31, 41, 55, 0.98);
+  box-shadow: 0 22px 80px rgba(0, 0, 0, 0.48), inset 0 1px 0 rgba(248, 250, 252, 0.08);
+  padding: 16px;
+}
+
+.pixel-template-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pixel-template-modal__header h2 {
+  overflow: hidden;
+  margin: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .home-room-first {

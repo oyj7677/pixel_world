@@ -26,6 +26,7 @@ import {
   type PlacementRejectedPayload,
   type PresenceUpdatedPayload,
   type RecentEventsUpdatedPayload,
+  type RoomPixelTemplateUpdatedPayload,
   type ServerToClientEvents
 } from '@pixel-world/shared';
 import {
@@ -142,6 +143,7 @@ export interface QuickPixelRealtimeMetadata {
 export interface QuickPixelRealtimeHandoff {
   broadcastQuickPixelPlaced?: (payload: QuickPixelResponseDto, metadata: QuickPixelRealtimeMetadata) => Promise<void> | void;
   broadcastPixelUpdated?: (payload: PixelUpdatedPayload) => void;
+  broadcastRoomPixelTemplateUpdated?: (canvasId: string, payload: RoomPixelTemplateUpdatedPayload) => void;
 }
 
 export type PixelSocketServer = SocketIOServer<ClientToServerEvents, ServerToClientEvents> & QuickPixelRealtimeHandoff;
@@ -715,6 +717,10 @@ export function attachRealtimeSocketServer(app: FastifyInstance): PixelSocketSer
 
   pixelIo.broadcastPixelUpdated = (payload: PixelUpdatedPayload) => {
     io.to(canvasRoomName(payload.canvasId)).emit('pixelUpdated', payload);
+  };
+
+  pixelIo.broadcastRoomPixelTemplateUpdated = (canvasId: string, payload: RoomPixelTemplateUpdatedPayload) => {
+    io.to(canvasRoomName(canvasId)).emit('roomPixelTemplateUpdated', payload);
   };
 
   pixelIo.broadcastQuickPixelPlaced = async (payload: QuickPixelResponseDto, metadata: QuickPixelRealtimeMetadata) => {

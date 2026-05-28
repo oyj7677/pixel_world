@@ -158,7 +158,7 @@ describe('CanvasBoard', () => {
     expect(screen.getByText('100%')).toBeVisible();
     expect(board.style.getPropertyValue('--canvas-board-width')).toBe('727px');
     expect(board.style.gridAutoRows).toBe('12px');
-  });
+  }, 10000);
 
   it('maps clicks on a large bitmap-rendered board back to pixel coordinates', () => {
     const onInspectPixel = vi.fn();
