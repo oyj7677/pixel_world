@@ -14,4 +14,15 @@ describe('RootLayout feedback entry', () => {
     expect(html).toContain('target="_blank"');
     expect(html).toContain('rel="noopener noreferrer"');
   });
+
+  it('loads the Google AdSense client globally', () => {
+    const html = renderToStaticMarkup(
+      RootLayout({ children: createElement('main', null, 'screen content') })
+    );
+
+    expect(html).toContain(
+      'src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1939451186341076"'
+    );
+    expect(html).toContain('crossorigin="anonymous"');
+  });
 });
